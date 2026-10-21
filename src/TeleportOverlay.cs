@@ -831,8 +831,7 @@ namespace PPBTool
             infMenuLinks = graph.GetInfLinks(selectedNode.Level)
                 .Where(l => l.Enter == enter)
                 .ToList();
-            infMenuTitle = UiText.Get("enter_inf")
-                + " (" + (enter ? UiText.Get("inf_enter") : UiText.Get("inf_exit")) + ")"
+            infMenuTitle = (enter ? UiText.Get("inf_enter") : UiText.Get("inf_exit"))
                 + " · " + selectedNode.Title;
             mapPressed = false;
             mapDragged = false;
@@ -1489,6 +1488,14 @@ namespace PPBTool
             var localCanvas = new Rect(0f, 0f, canvas.width, canvas.height);
 
             GUI.BeginGroup(canvas);
+            Block levelOwner = LevelGraph.ExitBlockOf(level);
+            if (levelOwner != null && levelOwner.OuterLevel != null)
+            {
+                Color levelBg = GameBlockColor(levelOwner, 24);
+                levelBg.a = 1f;
+                Fill(new Rect(localX, localY, gridW, gridH), levelBg);
+            }
+
             for (int row = firstRow; row <= lastRow; row++)
             {
                 int y = level.height - 1 - row;
@@ -1505,10 +1512,20 @@ namespace PPBTool
             }
 
             Block exit = LevelGraph.ExitBlockOf(level);
-            if (exit != null && exit.SubLevel == level && (exit.IsPlayer || exit.DrawIsPlayer))
+            if (exit != null && exit.SubLevel == level
+                && (exit.OuterLevel == null || !exit.OuterLevel.InfZone))
             {
-                int faceCell = Mathf.RoundToInt(Mathf.Min(canvas.width, canvas.height));
-                DrawFaceArt(new Rect(0f, 0f, canvas.width, canvas.height), exit, faceCell, true);
+                var boxRect = new Rect(localX, localY, gridW, gridH);
+                int boxCell = Mathf.RoundToInt(Mathf.Min(gridW, gridH));
+                if (exit.IsPlayer || exit.DrawIsPlayer)
+                {
+                    DrawFaceArt(boxRect, exit, boxCell);
+                }
+
+                if (exit.IsSomeInfEnterBlock || exit.IsSomeInfExitBlock)
+                {
+                    DrawInfSymbols(boxRect, exit, boxCell);
+                }
             }
 
             if (landingValid)
@@ -1822,25 +1839,31 @@ namespace PPBTool
                 DrawTextureTinted(r, texGradient, new Color(1f, 1f, 1f, 0.42f));
             }
 
-            if (sub != null && cell >= 14f && depth < 4)
-            {
-                DrawBoxContents(r, block, sub, cell, depth);
-            }
-
             if (sub != null)
             {
+                // Fallback grid for boxes too small to draw contents; when contents
+                // are drawn, the inner grid is painted before the child cells.
                 DrawBoxGrid(r, block, sub, color);
             }
 
+            if (sub != null && cell >= 14f && depth < 4)
+            {
+                DrawBoxContents(r, block, sub, cell, depth, color);
+            }
+
             DrawBoxBorder(r, block, sub, cell);
-            if (sub != null && GameState.Player != null
+            bool parentVoid = block.OuterLevel != null && block.OuterLevel.InfZone;
+            if (!parentVoid && sub != null && GameState.Player != null
                 && GameState.Player.OuterLevel == sub
                 && GameState.Player.SubLevel == null)
             {
-                DrawFaceArt(r, GameState.Player, cell, false);
+                DrawFaceArt(r, GameState.Player, cell);
             }
 
-            DrawInfSymbols(r, block, cell);
+            if (!parentVoid)
+            {
+                DrawInfSymbols(r, block, cell);
+            }
         }
 
         private void DrawBoxGrid(Rect r, Block block, Level sub, Color color)
@@ -1862,7 +1885,7 @@ namespace PPBTool
             }
         }
 
-        private void DrawBoxContents(Rect r, Block block, Level sub, int cell, int depth)
+        private void DrawBoxContents(Rect r, Block block, Level sub, int cell, int depth, Color boxColor)
         {
             float pad = Mathf.Max(1f, cell * 0.09f);
             var inner = new Rect(r.x + pad, r.y + pad, r.width - pad * 2f, r.height - pad * 2f);
@@ -1876,7 +1899,10 @@ namespace PPBTool
                 return;
             }
 
-            Fill(inner, LevelBackgroundColor(sub));
+            boxColor.a = 1f;
+            Fill(inner, boxColor);
+            DrawBoxGrid(inner, block, sub, boxColor);
+
             float mini = Mathf.Min(inner.width / sub.width, inner.height / sub.height);
             if (mini < 2f)
             {
@@ -1909,47 +1935,113 @@ namespace PPBTool
                 border = new Color(1f, 1f, 1f, 0.22f);
             }
 
-            if (sub == null || !sub.leftWall)
+            if (sub == null)
+            {
+                Fill(new Rect(r.x, r.y, thickness, r.height), border);
+                Fill(new Rect(r.xMax - thickness, r.y, thickness, r.height), border);
+                Fill(new Rect(r.x, r.y, r.width, thickness), border);
+                Fill(new Rect(r.x, r.yMax - thickness, r.width, thickness), border);
+                return;
+            }
+
+            bool inf = block.OuterLevel != null && block.OuterLevel.InfZone
+                && !sub.FilledWithWalls && block.SpecialEffect != 12;
+            float cw = r.width / sub.width;
+            float ch = r.height / sub.height;
+
+            if (sub.leftWall || inf)
             {
                 Fill(new Rect(r.x, r.y, thickness, r.height), border);
             }
+            else
+            {
+                for (int y = 0; y < sub.height; y++)
+                {
+                    if (IsBorderWall(sub.blocks[0, y]))
+                    {
+                        Fill(new Rect(r.x, r.y + ch * (sub.height - 1 - y), thickness, ch), border);
+                    }
+                }
+            }
 
-            if (sub == null || !sub.rightWall)
+            if (sub.rightWall || inf)
             {
                 Fill(new Rect(r.xMax - thickness, r.y, thickness, r.height), border);
             }
+            else
+            {
+                for (int y = 0; y < sub.height; y++)
+                {
+                    if (IsBorderWall(sub.blocks[sub.width - 1, y]))
+                    {
+                        Fill(new Rect(r.xMax - thickness, r.y + ch * (sub.height - 1 - y), thickness, ch), border);
+                    }
+                }
+            }
 
-            if (sub == null || !sub.upWall)
+            if (sub.upWall || inf)
             {
                 Fill(new Rect(r.x, r.y, r.width, thickness), border);
             }
+            else
+            {
+                for (int x = 0; x < sub.width; x++)
+                {
+                    if (IsBorderWall(sub.blocks[x, sub.height - 1]))
+                    {
+                        Fill(new Rect(r.x + cw * x, r.y, cw, thickness), border);
+                    }
+                }
+            }
 
-            if (sub == null || !sub.downWall)
+            if (sub.downWall || inf)
             {
                 Fill(new Rect(r.x, r.yMax - thickness, r.width, thickness), border);
             }
+            else
+            {
+                for (int x = 0; x < sub.width; x++)
+                {
+                    if (IsBorderWall(sub.blocks[x, 0]))
+                    {
+                        Fill(new Rect(r.x + cw * x, r.yMax - thickness, cw, thickness), border);
+                    }
+                }
+            }
+        }
+
+        private static bool IsBorderWall(Block block)
+        {
+            return block != null && block.SubLevel == null;
         }
 
         private void DrawPlayerArt(Rect r, Block block, int cell, int depth)
         {
+            bool parentVoid = block.OuterLevel != null && block.OuterLevel.InfZone;
             if (block.SubLevel != null)
             {
                 DrawBoxArt(r, block, cell, depth);
-                DrawFaceArt(r, block, cell, false);
+                if (!parentVoid)
+                {
+                    DrawFaceArt(r, block, cell);
+                }
                 return;
             }
 
             Color color = GamePlayerColor(block, cell);
             Fill(r, color);
-            DrawFaceArt(r, block, cell, false);
-            DrawInfSymbols(r, block, cell);
+            if (!parentVoid)
+            {
+                DrawFaceArt(r, block, cell);
+                DrawInfSymbols(r, block, cell);
+            }
         }
 
-        private void DrawFaceArt(Rect r, Block block, int cell, bool playerBoxSurface)
+        private void DrawFaceArt(Rect r, Block block, int cell)
         {
             float fraction = cell / Mathf.Max(1f, Screen.height);
             float alpha = -Mathf.Log10(fraction + 15f) + 1.5f;
-            if (playerBoxSurface)
+            if (block.SubLevel != null && !block.SubLevel.FilledWithWalls)
             {
                 alpha = -Mathf.Log10(fraction + 1.5f) + 0.5f;
             }

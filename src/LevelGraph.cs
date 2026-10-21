@@ -361,7 +361,7 @@ namespace PPBTool
                 if (block.OuterLevel == null)
                 {
                     // The block that created a root level. Every level also gets an
-                    // auto-generated ∞ exit block inside a void, so this owner must keep
+                    // auto-generated infinite-exit block inside a void, so this owner must keep
                     // the level at the tree root instead of letting the void adopt it.
                     hasRootOwner = true;
                     continue;
@@ -393,9 +393,13 @@ namespace PPBTool
             if (parent != null && parent.IsSomeInfEnterBlock)
             {
                 string area = CleanName(level.hubAreaName);
-                return string.IsNullOrEmpty(area)
-                    ? "∞Room " + level.width + "x" + level.height
-                    : area;
+                return string.IsNullOrEmpty(area) ? "Infinite Enter" : area;
+            }
+
+            if (parent != null && parent.IsSomeInfExitBlock)
+            {
+                string area = CleanName(level.hubAreaName);
+                return string.IsNullOrEmpty(area) ? "Infinite Exit" : area;
             }
 
             string title = CleanName(level.hubAreaName);
@@ -428,23 +432,23 @@ namespace PPBTool
 
             if (parent != null && parent.IsSomeInfEnterBlock)
             {
-                tags.Add("∞进入块");
+                tags.Add("Infinite Enter");
             }
 
             if (parent != null && parent.IsSomeInfExitBlock)
             {
-                tags.Add("∞退出块");
+                tags.Add("Infinite Exit");
             }
 
             int count;
             if (infInCounts.TryGetValue(level, out count) && count > 0)
             {
-                tags.Add("∞进入←" + count);
+                tags.Add("Infinite Enter←" + count);
             }
 
             if (infOutCounts.TryGetValue(level, out count) && count > 0)
             {
-                tags.Add("∞退出←" + count);
+                tags.Add("Infinite Exit←" + count);
             }
 
             return string.Join(" ", tags.ToArray());
@@ -594,17 +598,17 @@ namespace PPBTool
 
             if (block.IsSomeInfEnterBlock)
             {
-                parts.Add("∞in");
+                parts.Add("Infinite Enter");
             }
 
             if (block.IsSomeInfExitBlock)
             {
-                parts.Add("∞out");
+                parts.Add("Infinite Exit");
             }
 
             if (block.GeneratedInf)
             {
-                parts.Add("generated∞");
+                parts.Add("Generated Infinite");
             }
 
             if (block.Possessable)
