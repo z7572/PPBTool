@@ -542,6 +542,101 @@ RenderLevel(outermost, viewportRect, pathIndex)
 - zoom 连续、无固定 10×/400px 卡死；LOD 下不卡顿；
 - 当前层交互仍是原来的点击/传送。
 
+#### 5.8.6 循环嵌套、克隆箱、镜像箱
+
+这三类问题必须分开建模，不能只用一个 `Level` 去重：
+
+- **循环**：引用/包含关系形成环（A 含 B，B 含 A；A 含自己的 clone；A 含镜像 A）。
+- **克隆**：同一个 Level 被多个 Block 引用；clone 是“非 primary 引用”，内容相同但颜色变亮。
+- **镜像**：`Block.FlipH`（以及 `SpecialEffect 2/3`）让该箱子的子层内容水平翻转，并带 FlipShine。
+
+##### 渲染上下文
+
+```csharp
+sealed class RenderContext
+{
+    Stack<Level> ancestors; // 仅当前递归祖先，用于环检测
+    int depth;
+    bool cumulativeFlipH;
+    Level focus;
+    List<LevelReference> path;
+}
+```
+
+- **环检测只看 `Level` 是否在 `ancestors` 中**。
+  - 如果 `box.SubLevel` 已在祖先栈：不递归内容；画该 box 的底色/边框/符号/脸，并叠加 `↻ cycle` 标记。
+  - 环检测**不能**用“全局已渲染 Level 集合”，否则同一 Level 的两个兄弟 clone 只能画一个。
+  - 环检测也**不能**只看 `Block`，否则 A 含 clone B、B 含 clone A 时不会被认为是环。
+- **clone 不去重**：
+  - 同一 Level 的两个兄弟 clone 都渲染；
+  - 每个 clone 用 `parentBox` 计算 clone 墙/箱子颜色；
+  - 缓存 key 不能只用 Level，至少 `(Level, parentBlock, cumulativeFlipH)`。
+- **镜像用累积翻转**：
+  ```csharp
+  childFlip = context.cumulativeFlipH ^ box.FlipH;
+  ```
+  - 每层 `DrawBoxContents` 按 `childFlip` 镜像 x；
+  - 外层链、内层递归、点击坐标反算都用同一个累积翻转；
+  - 嵌套镜像自然 XOR：镜中镜恢复正向；
+  - 环在镜像处也必须截断，不能靠“翻回去”继续。
+
+##### 具体案例
+
+1. **A 含 clone B，B 含 clone A，当前 focus A**
+   - `ancestors=[A]` → 渲染 A；
+   - A 的 clone B：B 不在祖先 → 进入，`ancestors=[A,B]`；
+   - B 的 clone A：A 在祖先 → **cycle placeholder**，不再进入；
+   - 视觉：B 箱内有一个“A(cycle)”框，而不是无限画 A/B。
+   - Back：引用栈仍可回到 B/A 的实际 entry；与渲染截断无关。
+
+2. **A 含 clone B，B 含 mirror A**
+   - 同样在 A 处成环；mirror A 的 box 自身按其 `FlipH` 画边框/符号，内容不递归；
+   - `cumulativeFlipH` 用于该 box 的显示，但不会再进入 A。
+
+3. **A 内有两个 clone B（兄弟）**
+   - `ancestors=[A]`；两个 B 都不在祖先，**都渲染**；
+   - 各自 clone 颜色、位置不同；不能因为 Level 相同就跳过第二个。
+
+4. **mirror A 内含 mirror B，B 内含 A**
+   - 先按 `flip ^= true` 渲染 A 的镜像内容；
+   - B 再 `flip ^= true`，累计回正向；
+   - 到 A 时命中祖先栈，画 cycle 标记；不会无限翻转。
+
+5. **A 的 clone 与 primary 同时存在**
+   - primary 用 `GetExitBlock` 颜色；clone 用 clone 变亮；
+   - 渲染/引用列表都保留两者；重叠同格时按 5.7 标记 hidden overlap。
+
+##### 环的显示与交互
+
+- **cycle placeholder**：
+  - 保留箱子底色/边框/∞·ε/玩家脸等父层元素；
+  - 内部不绘制子层内容；
+  - 中心/角落显示 `↻` 或 `cycle`，可带深度 `↻3`；
+  - 不画 Infinity 的多重符号？父层符号照常；内容不展开。
+- **点击**：
+  - 普通箱子 → 打开 SubLevel；
+  - cycle 箱子 → 不自动无限展开；提示 `Cycle reference`，或打开 Reference chooser 选择“聚焦到该层/查看引用”；
+  - 如果允许显式展开，最多增加 1–3 层“手动 cycle depth”，不能默认无限。
+- **缩放**：
+  - 放大 cycle 箱子只是放大 placeholder，不产生新细节；
+  - 缩小到 LOD 时 cycle 标记可简化为边框/点；
+  - 不会因“无限缩放”触发无限递归。
+
+##### 外框视图（5.8）中的环
+
+- `ViewPath` 从当前层向外走时，遇到已访问 Level 立即停止，并标 `cycle`；
+- 外框最多到环的前一个节点，不会无限外套；
+- 多引用时由 stack/chooser 选一条路径；不同路径可能在不同位置成环。
+
+##### 验收
+
+- A↔B clone/mirror 循环：不无限递归/不卡死，显示 cycle placeholder；
+- 两个兄弟 clone：都显示，颜色正确；
+- mirror 嵌套：XOR 正确，镜中镜正向；
+- clone+mirror+cycle 组合：不崩、不重复、不丢层；
+- Back/引用 chooser 仍能回到实际 entry；
+- 无限缩放仅放大 cycle 标记，不递归展开。
+
 ## 6. 验收标准
 
 1. **引用/Back**：
