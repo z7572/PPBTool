@@ -19,6 +19,90 @@ namespace PPBTool
         }
     }
 
+    /// <summary>A concrete place in a parent level that references a Level.</summary>
+    internal enum RefKind
+    {
+        RootOwner,
+        RealBox,
+        CloneBox,
+        InfEnter,
+        InfExit,
+        Generated,
+        Other,
+    }
+
+    internal sealed class LevelReference
+    {
+        public Block Block;
+        public Level Parent;
+        public Level Target;
+        public int X;
+        public int Y;
+        public RefKind Kind;
+        public bool IsGridResident;
+        public bool IsHiddenOverlap;
+        public bool IsPrimary;
+
+        public bool CanBack
+        {
+            get
+            {
+                return Block != null
+                    && Parent != null
+                    && Target != null
+                    && Block.SubLevel == Target
+                    && World.levels != null
+                    && World.levels.Contains(Parent);
+            }
+        }
+
+        public string KindLabel
+        {
+            get
+            {
+                switch (Kind)
+                {
+                    case RefKind.RootOwner: return "root";
+                    case RefKind.CloneBox: return "clone";
+                    case RefKind.InfEnter: return "Infinite Enter";
+                    case RefKind.InfExit: return "Infinite Exit";
+                    case RefKind.Generated: return "generated";
+                    case RefKind.RealBox: return "box";
+                    default: return "ref";
+                }
+            }
+        }
+
+        public string Label
+        {
+            get
+            {
+                if (Parent == null)
+                {
+                    return KindLabel + " (no outer level)";
+                }
+
+                string label = LevelGraph.DescribeLevel(Parent) + " (" + X + "," + Y + ") · " + KindLabel;
+                if (IsPrimary)
+                {
+                    label += " · primary";
+                }
+
+                if (IsHiddenOverlap)
+                {
+                    label += " · hidden overlap";
+                }
+
+                return label;
+            }
+        }
+
+        public override string ToString()
+        {
+            return Label;
+        }
+    }
+
     /// <summary>One of a level's infinity-enter / infinity-exit links.</summary>
     internal sealed class InfLink
     {
@@ -76,6 +160,8 @@ namespace PPBTool
         public int Depth;
         public bool ContainsPlayer;
         public List<LevelNode> Children = new List<LevelNode>();
+        public List<LevelReference> References = new List<LevelReference>();
+        public int HiddenReferenceCount;
 
         /// <summary>Root → this node path, for the header label.</summary>
         public string Path
@@ -108,6 +194,8 @@ namespace PPBTool
             new Dictionary<Level, LevelNode>();
         private readonly Dictionary<Level, int> infInCounts = new Dictionary<Level, int>();
         private readonly Dictionary<Level, int> infOutCounts = new Dictionary<Level, int>();
+        private readonly Dictionary<Level, List<LevelReference>> referencesByLevel =
+            new Dictionary<Level, List<LevelReference>>();
 
         public string SceneLabel = string.Empty;
 
@@ -141,6 +229,7 @@ namespace PPBTool
             nodesByLevel.Clear();
             infInCounts.Clear();
             infOutCounts.Clear();
+            referencesByLevel.Clear();
             PlayerNode = null;
             SceneLabel = GetSceneLabel();
 
@@ -155,6 +244,8 @@ namespace PPBTool
                 var levelSet = new HashSet<Level>(levels);
                 var parentByLevel = new Dictionary<Level, Block>();
                 var childrenByLevel = new Dictionary<Level, List<Level>>();
+
+                BuildReferences(levels);
 
                 foreach (Level level in levels)
                 {
@@ -264,7 +355,16 @@ namespace PPBTool
                 Depth = depth,
                 Title = BuildTitle(level, parent, depth, rootIndex, rootCount),
                 Tags = BuildTags(level, parent),
+                References = new List<LevelReference>(GetReferences(level)),
             };
+            foreach (LevelReference reference in node.References)
+            {
+                if (reference.IsHiddenOverlap)
+                {
+                    node.HiddenReferenceCount++;
+                }
+            }
+
             node.Subtitle = BuildSubtitle(level, node.Tags);
             if (parent != null)
             {
@@ -338,6 +438,108 @@ namespace PPBTool
             counts[level] = value + 1;
         }
 
+        private void BuildReferences(List<Level> levels)
+        {
+            foreach (Level level in levels)
+            {
+                if (level == null)
+                {
+                    continue;
+                }
+
+                var list = new List<LevelReference>();
+                if (level.BlocksWithThisAsTheirSubLevel != null)
+                {
+                    Block primary = SafeExitBlock(level);
+                    foreach (Block block in level.BlocksWithThisAsTheirSubLevel)
+                    {
+                        if (block == null || block.SubLevel != level)
+                        {
+                            continue;
+                        }
+
+                        bool resident = false;
+                        if (block.OuterLevel != null
+                            && block.OuterLevel.blocks != null
+                            && block.OuterLevel.InBounds(block.xpos, block.ypos))
+                        {
+                            resident = block.OuterLevel.blocks[block.xpos, block.ypos] == block;
+                        }
+
+                        RefKind kind = RefKind.Other;
+                        if (block.OuterLevel == null)
+                        {
+                            kind = RefKind.RootOwner;
+                        }
+                        else if (block.IsSomeInfEnterBlock)
+                        {
+                            kind = RefKind.InfEnter;
+                        }
+                        else if (block.IsSomeInfExitBlock)
+                        {
+                            kind = RefKind.InfExit;
+                        }
+                        else if (block.GeneratedInf)
+                        {
+                            kind = RefKind.Generated;
+                        }
+                        else if (block != primary)
+                        {
+                            kind = RefKind.CloneBox;
+                        }
+                        else
+                        {
+                            kind = RefKind.RealBox;
+                        }
+
+                        list.Add(new LevelReference
+                        {
+                            Block = block,
+                            Parent = block.OuterLevel,
+                            Target = level,
+                            X = block.xpos,
+                            Y = block.ypos,
+                            Kind = kind,
+                            IsGridResident = resident,
+                            IsHiddenOverlap = block.OuterLevel != null && !resident,
+                            IsPrimary = block == primary,
+                        });
+                    }
+                }
+
+                referencesByLevel[level] = list;
+            }
+        }
+
+        public IReadOnlyList<LevelReference> GetReferences(Level level)
+        {
+            List<LevelReference> list;
+            if (level != null && referencesByLevel.TryGetValue(level, out list))
+            {
+                return list;
+            }
+
+            return new LevelReference[0];
+        }
+
+        public LevelReference FindReference(Block block, Level level)
+        {
+            if (block == null || level == null)
+            {
+                return null;
+            }
+
+            foreach (LevelReference reference in GetReferences(level))
+            {
+                if (reference.Block == block)
+                {
+                    return reference;
+                }
+            }
+
+            return null;
+        }
+
         /// <summary>
         /// A box can be referenced by both its real parent and a void/infinity block.
         /// Prefer the real (non-InfZone) parent so the tree mirrors how the player walks.
@@ -350,10 +552,13 @@ namespace PPBTool
             }
 
             bool hasRootOwner = false;
+            Block nonVoidGrid = null;
+            Block nonVoid = null;
+            Block voidGrid = null;
             Block voidParent = null;
             foreach (Block block in level.BlocksWithThisAsTheirSubLevel)
             {
-                if (block == null)
+                if (block == null || block.SubLevel != level)
                 {
                     continue;
                 }
@@ -367,18 +572,51 @@ namespace PPBTool
                     continue;
                 }
 
+                bool resident = block.OuterLevel.InBounds(block.xpos, block.ypos)
+                    && block.OuterLevel.blocks[block.xpos, block.ypos] == block;
+
                 if (!block.OuterLevel.InfZone)
                 {
-                    return block;
-                }
+                    if (resident && nonVoidGrid == null)
+                    {
+                        nonVoidGrid = block;
+                    }
 
-                if (voidParent == null)
+                    if (nonVoid == null)
+                    {
+                        nonVoid = block;
+                    }
+                }
+                else
                 {
-                    voidParent = block;
+                    if (resident && voidGrid == null)
+                    {
+                        voidGrid = block;
+                    }
+
+                    if (voidParent == null)
+                    {
+                        voidParent = block;
+                    }
                 }
             }
 
-            return hasRootOwner ? null : voidParent;
+            if (nonVoidGrid != null)
+            {
+                return nonVoidGrid;
+            }
+
+            if (nonVoid != null)
+            {
+                return nonVoid;
+            }
+
+            if (hasRootOwner)
+            {
+                return null;
+            }
+
+            return voidGrid ?? voidParent;
         }
 
         private static string BuildTitle(
@@ -430,25 +668,23 @@ namespace PPBTool
                 tags.Add("void");
             }
 
-            if (parent != null && parent.IsSomeInfEnterBlock)
+            IReadOnlyList<LevelReference> refs = GetReferences(level);
+            tags.Add("refs ×" + refs.Count);
+            int hidden = refs.Count(r => r.IsHiddenOverlap);
+            if (hidden > 0)
             {
-                tags.Add("Infinite Enter");
-            }
-
-            if (parent != null && parent.IsSomeInfExitBlock)
-            {
-                tags.Add("Infinite Exit");
+                tags.Add("hidden ×" + hidden);
             }
 
             int count;
             if (infInCounts.TryGetValue(level, out count) && count > 0)
             {
-                tags.Add("Infinite Enter←" + count);
+                tags.Add("Infinite Enter ×" + count);
             }
 
             if (infOutCounts.TryGetValue(level, out count) && count > 0)
             {
-                tags.Add("Infinite Exit←" + count);
+                tags.Add("Infinite Exit ×" + count);
             }
 
             return string.Join(" ", tags.ToArray());

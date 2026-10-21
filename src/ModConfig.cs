@@ -18,6 +18,7 @@ namespace PPBTool
         private readonly ConfigEntry<bool> hideVoidBoxes;
         private readonly ConfigEntry<bool> levelThumbnails;
         private readonly ConfigEntry<bool> logSceneTree;
+        private readonly ConfigEntry<bool> logInfSymbols;
 
         public ModConfig(ConfigFile config)
         {
@@ -62,6 +63,11 @@ namespace PPBTool
                 "Diagnostics", "LogSceneTree", false,
                 "Log every scanned level node when the map opens. Useful when reporting " +
                 "compatibility problems with custom hubs.");
+
+            logInfSymbols = config.Bind(
+                "Diagnostics", "LogInfSymbols", false,
+                "Log infinity symbol decisions (block, parent, count, depth, DrawStyle). " +
+                "Useful when the game and map disagree about Infinite Enter/Exit symbols.");
         }
 
         // Read live values so ConfigurationManager edits apply without a restart.
@@ -95,6 +101,11 @@ namespace PPBTool
         public bool LogSceneTree
         {
             get { return logSceneTree.Value; }
+        }
+
+        public bool LogInfSymbols
+        {
+            get { return logInfSymbols.Value; }
         }
 
         public bool WinPressed()

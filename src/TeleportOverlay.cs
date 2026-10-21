@@ -64,6 +64,9 @@ namespace PPBTool
         private readonly Dictionary<Level, bool> expanded = new Dictionary<Level, bool>();
         private readonly Dictionary<string, Texture> portalCache =
             new Dictionary<string, Texture>();
+        private readonly HashSet<Block> infLogSeen = new HashSet<Block>();
+        private static FieldInfo drawIiiField;
+        private static bool drawIiiRead;
 
         private Texture2D white;
         private Texture2D texButton;
@@ -122,6 +125,31 @@ namespace PPBTool
         private World.WS savedState;
         private LevelNode selectedNode;
         private Block selectedColorOwner;
+        private readonly List<LevelReference> navRefs = new List<LevelReference>();
+        private readonly List<LevelReference> refChoices = new List<LevelReference>();
+        private bool showRefMenu;
+        private bool showNavMenu;
+        private string navScene = string.Empty;
+
+        private readonly List<ViewSnapshot> backHistory = new List<ViewSnapshot>();
+        private readonly List<ViewSnapshot> forwardHistory = new List<ViewSnapshot>();
+        private bool restoringHistory;
+        private string historyScene = string.Empty;
+        private float lastHistoryTime;
+
+        private sealed class ViewSnapshot
+        {
+            public Level Level;
+            public int CursorX;
+            public int CursorY;
+            public float Zoom;
+            public Vector2 Pan;
+            public float TreeScroll;
+            public float TreeScrollX;
+            public bool HideVoid;
+            public Block ColorOwner;
+            public List<LevelReference> References = new List<LevelReference>();
+        }
         private bool hideVoid;
         private bool portalArt;
         private int cursorX;
@@ -232,7 +260,21 @@ namespace PPBTool
 
             UiText.Refresh();
             portalCache.Clear();
+            infLogSeen.Clear();
             selectedColorOwner = null;
+            if (!string.Equals(navScene, World.currentLevelName, StringComparison.Ordinal))
+            {
+                navRefs.Clear();
+                navScene = World.currentLevelName;
+            }
+
+            if (!string.Equals(historyScene, World.currentLevelName, StringComparison.Ordinal))
+            {
+                backHistory.Clear();
+                forwardHistory.Clear();
+                historyScene = World.currentLevelName;
+            }
+
             lastCanvas = default(Rect);
             lastGrid = default(Rect);
             savedState = World.State;
@@ -240,6 +282,8 @@ namespace PPBTool
             portalArt = config.LevelThumbnails;
             showInfMenu = false;
             showInfConfirm = false;
+            showRefMenu = false;
+            showNavMenu = false;
             titleStyle = null;
             RebuildGraph(false);
             if (rows.Count == 0 && hideVoid)
@@ -304,6 +348,8 @@ namespace PPBTool
             open = false;
             showInfMenu = false;
             showInfConfirm = false;
+            showRefMenu = false;
+            showNavMenu = false;
             suppressFrames = 2;
             Cursor.visible = cursorWasVisible;
             World.State = savedState == World.WS.Initializing ? World.WS.Playing : savedState;
@@ -331,6 +377,12 @@ namespace PPBTool
             {
                 expanded.Clear();
                 portalCache.Clear();
+                infLogSeen.Clear();
+                navRefs.Clear();
+                navScene = World.currentLevelName;
+                backHistory.Clear();
+                forwardHistory.Clear();
+                historyScene = World.currentLevelName;
             }
 
             landingLevel = null;
@@ -544,6 +596,7 @@ namespace PPBTool
                 return;
             }
 
+            PushViewHistory();
             ExpandAncestors(node);
             if (hideVoid && IsHiddenByVoid(node))
             {
@@ -575,15 +628,250 @@ namespace PPBTool
             NavigateToNode(node);
         }
 
-        private void GoParent()
+        private ViewSnapshot CaptureView()
         {
-            if (selectedNode == null || selectedNode.ParentNode == null)
+            return new ViewSnapshot
             {
-                Notify(UiText.Get("parent_missing"), false);
+                Level = selectedNode != null ? selectedNode.Level : null,
+                CursorX = cursorX,
+                CursorY = cursorY,
+                Zoom = zoom,
+                Pan = pan,
+                TreeScroll = treeScroll,
+                TreeScrollX = treeScrollX,
+                HideVoid = hideVoid,
+                ColorOwner = selectedColorOwner,
+                References = new List<LevelReference>(navRefs),
+            };
+        }
+
+        private void PushViewHistory()
+        {
+            if (restoringHistory || !open || selectedNode == null || selectedNode.Level == null)
+            {
                 return;
             }
 
-            NavigateToNode(selectedNode.ParentNode);
+            ViewSnapshot snapshot = CaptureView();
+            if (backHistory.Count > 0)
+            {
+                ViewSnapshot last = backHistory[backHistory.Count - 1];
+                if (last.Level == snapshot.Level
+                    && Time.unscaledTime - lastHistoryTime < 0.35f)
+                {
+                    backHistory[backHistory.Count - 1] = snapshot;
+                    forwardHistory.Clear();
+                    lastHistoryTime = Time.unscaledTime;
+                    return;
+                }
+            }
+
+            backHistory.Add(snapshot);
+            if (backHistory.Count > 64)
+            {
+                backHistory.RemoveAt(0);
+            }
+
+            forwardHistory.Clear();
+            lastHistoryTime = Time.unscaledTime;
+        }
+
+        private void GoBackView()
+        {
+            if (backHistory.Count == 0)
+            {
+                Notify(UiText.Get("no_back_history"), false);
+                return;
+            }
+
+            if (selectedNode != null && selectedNode.Level != null)
+            {
+                forwardHistory.Add(CaptureView());
+                if (forwardHistory.Count > 64)
+                {
+                    forwardHistory.RemoveAt(0);
+                }
+            }
+
+            ViewSnapshot target = backHistory[backHistory.Count - 1];
+            backHistory.RemoveAt(backHistory.Count - 1);
+            RestoreView(target);
+        }
+
+        private void GoForwardView()
+        {
+            if (forwardHistory.Count == 0)
+            {
+                Notify(UiText.Get("no_forward_history"), false);
+                return;
+            }
+
+            if (selectedNode != null && selectedNode.Level != null)
+            {
+                backHistory.Add(CaptureView());
+                if (backHistory.Count > 64)
+                {
+                    backHistory.RemoveAt(0);
+                }
+            }
+
+            ViewSnapshot target = forwardHistory[forwardHistory.Count - 1];
+            forwardHistory.RemoveAt(forwardHistory.Count - 1);
+            RestoreView(target);
+        }
+
+        private void RestoreView(ViewSnapshot snapshot)
+        {
+            if (snapshot == null || snapshot.Level == null)
+            {
+                return;
+            }
+
+            LevelNode node = graph.FindNode(snapshot.Level);
+            if (node == null)
+            {
+                Notify(UiText.Get("level_missing"), true);
+                return;
+            }
+
+            restoringHistory = true;
+            try
+            {
+                NavigateToNode(node);
+                selectedColorOwner = snapshot.ColorOwner;
+                hideVoid = snapshot.HideVoid;
+                FlattenTree();
+                cursorX = Mathf.Clamp(snapshot.CursorX, 0, Mathf.Max(0, snapshot.Level.width - 1));
+                cursorY = Mathf.Clamp(snapshot.CursorY, 0, Mathf.Max(0, snapshot.Level.height - 1));
+                zoom = snapshot.Zoom;
+                pan = snapshot.Pan;
+                treeScroll = snapshot.TreeScroll;
+                treeScrollX = snapshot.TreeScrollX;
+                navRefs.Clear();
+                navRefs.AddRange(snapshot.References);
+                showNavMenu = false;
+                showRefMenu = false;
+                showInfMenu = false;
+                showInfConfirm = false;
+            }
+            finally
+            {
+                restoringHistory = false;
+            }
+        }
+
+        private void GoToPlayerView()
+        {
+            if (graph.PlayerNode == null)
+            {
+                Notify(UiText.Get("no_players"), true);
+                return;
+            }
+
+            NavigateToNode(graph.PlayerNode);
+        }
+
+        private void GoToReference()
+        {
+            if (selectedNode == null || selectedNode.Level == null)
+            {
+                return;
+            }
+
+            for (int i = navRefs.Count - 1; i >= 0; i--)
+            {
+                LevelReference reference = navRefs[i];
+                if (reference != null && reference.CanBack && reference.Target == selectedNode.Level)
+                {
+                    NavigateToReference(reference);
+                    if (selectedNode != null && selectedNode.Level == reference.Parent)
+                    {
+                        navRefs.RemoveAt(i);
+                    }
+
+                    return;
+                }
+            }
+
+            refChoices.Clear();
+            foreach (LevelReference reference in selectedNode.References)
+            {
+                if (reference != null && reference.CanBack)
+                {
+                    refChoices.Add(reference);
+                }
+            }
+
+            if (refChoices.Count == 0)
+            {
+                Notify(UiText.Get("no_outer_reference"), true);
+                return;
+            }
+
+            if (refChoices.Count == 1)
+            {
+                NavigateToReference(refChoices[0]);
+                return;
+            }
+
+            showRefMenu = true;
+            showInfMenu = false;
+            showInfConfirm = false;
+            mapPressed = false;
+            mapDragged = false;
+        }
+
+        private bool CanGoToReference()
+        {
+            if (selectedNode == null || selectedNode.Level == null)
+            {
+                return false;
+            }
+
+            foreach (LevelReference reference in navRefs)
+            {
+                if (reference != null && reference.CanBack && reference.Target == selectedNode.Level)
+                {
+                    return true;
+                }
+            }
+
+            foreach (LevelReference reference in selectedNode.References)
+            {
+                if (reference != null && reference.CanBack)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void NavigateToReference(LevelReference reference)
+        {
+            if (reference == null || !reference.CanBack)
+            {
+                Notify(UiText.Get("no_outer_reference"), true);
+                return;
+            }
+
+            LevelNode parentNode = graph.FindNode(reference.Parent);
+            if (parentNode == null)
+            {
+                Notify(UiText.Get("level_missing"), true);
+                return;
+            }
+
+            showRefMenu = false;
+            NavigateToNode(parentNode);
+            if (selectedNode != null && selectedNode.Level == reference.Parent)
+            {
+                SetCursor(reference.X, reference.Y);
+                if (reference.IsHiddenOverlap)
+                {
+                    Notify(UiText.Get("hidden_reference"), false);
+                }
+            }
         }
 
         private void PlaceCursorAtDefault(LevelNode node)
@@ -643,6 +931,18 @@ namespace PPBTool
 
             if (keyboard.escapeKey.wasPressedThisFrame)
             {
+                if (showNavMenu)
+                {
+                    showNavMenu = false;
+                    return;
+                }
+
+                if (showRefMenu)
+                {
+                    showRefMenu = false;
+                    return;
+                }
+
                 if (showInfConfirm || showInfMenu)
                 {
                     showInfConfirm = false;
@@ -654,6 +954,11 @@ namespace PPBTool
                 return;
             }
 
+            if (showNavMenu || showRefMenu)
+            {
+                return;
+            }
+
             if (config.TeleportPressed())
             {
                 Close();
@@ -662,6 +967,19 @@ namespace PPBTool
 
             if (showInfMenu)
             {
+                return;
+            }
+
+            bool alt = keyboard.leftAltKey.isPressed || keyboard.rightAltKey.isPressed;
+            if (alt && Pressed(keyboard, Key.LeftArrow))
+            {
+                GoBackView();
+                return;
+            }
+
+            if (alt && Pressed(keyboard, Key.RightArrow))
+            {
+                GoForwardView();
                 return;
             }
 
@@ -688,7 +1006,7 @@ namespace PPBTool
 
             if (Pressed(keyboard, Key.Backspace))
             {
-                GoParent();
+                GoToReference();
             }
 
             if (Pressed(keyboard, Key.F))
@@ -800,10 +1118,15 @@ namespace PPBTool
             if (block != null && block.SubLevel != null)
             {
                 Block colorOwner = block;
+                LevelReference reference = graph.FindReference(block, block.SubLevel);
                 NavigateToLevel(block.SubLevel);
                 if (selectedNode != null && selectedNode.Level == block.SubLevel)
                 {
                     selectedColorOwner = colorOwner;
+                    if (reference != null && reference.CanBack)
+                    {
+                        navRefs.Add(reference);
+                    }
                 }
 
                 return;
@@ -833,6 +1156,7 @@ namespace PPBTool
                 return;
             }
 
+            PushViewHistory();
             string note = UiText.Get("teleported") + " " + cell;
             if (config.Undoable)
             {
@@ -858,6 +1182,14 @@ namespace PPBTool
             config.HideVoidBoxes = hideVoid;
             FlattenTree();
             ClampTreeScroll();
+        }
+
+        private void ToggleNavMenu()
+        {
+            showNavMenu = !showNavMenu;
+            showRefMenu = false;
+            showInfMenu = false;
+            showInfConfirm = false;
         }
 
         private void TogglePortalArt()
@@ -1018,6 +1350,16 @@ namespace PPBTool
             {
                 DrawInfMenu(w, h);
             }
+
+            if (open && showRefMenu)
+            {
+                DrawRefMenu(w, h);
+            }
+
+            if (open && showNavMenu)
+            {
+                DrawNavMenu(w, h);
+            }
         }
 
         private void DrawToast()
@@ -1107,7 +1449,8 @@ namespace PPBTool
             float y = rect.y + 6f;
 
             x = ToolButton(x, y, UiText.Get("back_parent"),
-                selectedNode != null && selectedNode.ParentNode != null, false, GoParent) + 8f;
+                CanGoToReference(), false, GoToReference) + 6f;
+            x = ToolButton(x, y, UiText.Get("nav_menu"), true, showNavMenu, ToggleNavMenu) + 8f;
             Fill(new Rect(x - 4f, y + 2f, 1f, 24f), Edge);
 
             x = ToolButton(x, y, UiText.Get("inf_enter"), selectedNode != null, false,
@@ -1134,7 +1477,7 @@ namespace PPBTool
             float width = buttonStyle.CalcSize(new GUIContent(text)).x + 16f;
             var rect = new Rect(x, y, width, 30f);
             bool old = GUI.enabled;
-            GUI.enabled = enabled && !showInfMenu && !showInfConfirm;
+            GUI.enabled = enabled && !showInfMenu && !showInfConfirm && !showRefMenu && !showNavMenu;
             if (GUI.Button(rect, text, on ? buttonOnStyle : buttonStyle))
             {
                 action();
@@ -1538,12 +1881,12 @@ namespace PPBTool
             Block visualOwner = selectedColorOwner != null && selectedColorOwner.SubLevel == level
                 ? selectedColorOwner
                 : levelOwner;
+            int bgCell = Mathf.Max(24, Mathf.RoundToInt(Mathf.Min(gridW, gridH)));
             if (visualOwner != null)
             {
                 if (visualOwner.OuterLevel != null)
                 {
-                    Color levelBg = GameBlockColor(
-                        visualOwner, Mathf.Max(24, Mathf.RoundToInt(Mathf.Min(gridW, gridH))));
+                    Color levelBg = GameBlockColor(visualOwner, bgCell);
                     Fill(new Rect(localX, localY, gridW, gridH), levelBg);
                     DrawLevelGrid(level, visualOwner, localX, localY, cell, gridW, gridH);
                 }
@@ -1554,6 +1897,10 @@ namespace PPBTool
                     DrawHubLines(level, visualOwner, cell, cell, false);
                     GUI.EndGroup();
                 }
+            }
+            else if (graph.GetReferences(level).Count == 0)
+            {
+                Fill(new Rect(localX, localY, gridW, gridH), ResolveLevelColor(level, bgCell));
             }
 
             for (int row = firstRow; row <= lastRow; row++)
@@ -1572,19 +1919,19 @@ namespace PPBTool
             }
 
             Block exit = LevelGraph.ExitBlockOf(level);
-            if (exit != null && exit.SubLevel == level
-                && (exit.OuterLevel == null || !exit.OuterLevel.InfZone))
+            if (exit != null && exit.SubLevel == level)
             {
                 var boxRect = new Rect(localX, localY, gridW, gridH);
                 int boxCell = Mathf.RoundToInt(Mathf.Min(gridW, gridH));
-                if (exit.IsPlayer || exit.DrawIsPlayer)
+                if ((exit.IsPlayer || exit.DrawIsPlayer)
+                    && (exit.OuterLevel == null || !exit.OuterLevel.InfZone))
                 {
                     DrawFaceArt(boxRect, exit, boxCell);
                 }
 
                 if (exit.IsSomeInfEnterBlock || exit.IsSomeInfExitBlock)
                 {
-                    DrawInfSymbols(boxRect, exit, boxCell);
+                    DrawInfSymbols(boxRect, exit, boxCell, 0);
                 }
             }
 
@@ -2000,10 +2347,7 @@ namespace PPBTool
                 DrawFaceArt(r, GameState.Player, cell);
             }
 
-            if (!parentVoid)
-            {
-                DrawInfSymbols(r, block, cell);
-            }
+            DrawInfSymbols(r, block, cell, depth);
         }
 
         private void DrawLevelGrid(
@@ -2343,8 +2687,9 @@ namespace PPBTool
             if (!parentVoid)
             {
                 DrawFaceArt(r, block, cell);
-                DrawInfSymbols(r, block, cell);
             }
+
+            DrawInfSymbols(r, block, cell, depth);
         }
 
         private void DrawFaceArt(Rect r, Block block, int cell)
@@ -2493,13 +2838,20 @@ namespace PPBTool
                 : 1f - 2f * (1f - value) * (1f - value);
         }
 
-        private void DrawInfSymbols(Rect r, Block block, int cell)
-        {            Texture texture;
+        private void DrawInfSymbols(Rect r, Block block, int cell, int depth)
+        {
+            if (block == null)
+            {
+                return;
+            }
+
+            bool enter = block.IsSomeInfEnterBlock;
+            Texture texture;
             int count;
-            if (block.IsSomeInfEnterBlock)
+            if (enter)
             {
                 texture = texInfOutline;
-                count = Mathf.Max(1, block.SomeInfEnterNum + 1);
+                count = block.SomeInfEnterNum + 1;
             }
             else if (block.IsSomeInfExitBlock && block.SubLevel != null)
             {
@@ -2507,35 +2859,26 @@ namespace PPBTool
                 int index = block.SubLevel.infExitBlocks != null
                     ? block.SubLevel.infExitBlocks.IndexOf(block)
                     : -1;
-                count = index >= 0 ? index + 1 : 1;
+                count = index + 1;
             }
             else
             {
                 return;
             }
 
-            if (count <= 0)
+            if (count <= 0
+                || !InfSymbolDepthAllowed(block, depth)
+                || !IsParentLevelRenderable(block.OuterLevel)
+                || texture == null)
             {
-                return;
-            }
-
-            if (texture == null)
-            {
-                string glyph = block.IsSomeInfEnterBlock ? "ε" : "∞";
-                int shown = Mathf.Min(count, 4);
-                for (int i = 0; i < shown; i++)
-                {
-                    GUI.Label(
-                        new Rect(r.x, r.y + r.height * i / shown, r.width, r.height / shown),
-                        glyph,
-                        centerLabelStyle);
-                }
+                LogInfSymbol(block, enter, count, depth, false);
                 return;
             }
 
             float alpha = Mathf.Clamp01(
                 -Mathf.Log10(((r.width + r.height) * 0.5f) / Mathf.Max(1f, Screen.height) + 0.5f) + 0.22f);
             Color tint = new Color(1f, 1f, 1f, alpha);
+            LogInfSymbol(block, enter, count, depth, true);
             if (count == 1)
             {
                 float w = r.width * 0.9f;
@@ -2557,6 +2900,92 @@ namespace PPBTool
                     texture,
                     tint);
             }
+        }
+
+        private static bool InfSymbolDepthAllowed(Block block, int depth)
+        {
+            // Matches Draw.DrawBlocks: GRID draw style suppresses root-level effects.
+            if (Draw.DrawStyle == Draw.DS.GRID
+                && depth == 0
+                && World.State != World.WS.FastTravel)
+            {
+                return false;
+            }
+
+            // The 'iii' special level suppresses depth>=2 SpecialEffect 13 effects.
+            if (depth >= 2 && block.SpecialEffect == 13 && DrawIii)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool DrawIii
+        {
+            get
+            {
+                if (!drawIiiRead)
+                {
+                    drawIiiRead = true;
+                    try
+                    {
+                        drawIiiField = typeof(Draw).GetField(
+                            "iii", BindingFlags.Static | BindingFlags.NonPublic);
+                    }
+                    catch
+                    {
+                        drawIiiField = null;
+                    }
+                }
+
+                try
+                {
+                    return drawIiiField != null && (bool)drawIiiField.GetValue(null);
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+        }
+
+        private static bool IsParentLevelRenderable(Level level)
+        {
+            if (level == null)
+            {
+                return false;
+            }
+
+            if (!level.InfZone)
+            {
+                return true;
+            }
+
+            return !level.FilledWithWalls
+                && World.WentToInfZone
+                && level.blockList != null
+                && level.blockList.Count > 1;
+        }
+
+        private void LogInfSymbol(Block block, bool enter, int count, int depth, bool rendered)
+        {
+            if (!config.LogInfSymbols || block == null || !infLogSeen.Add(block))
+            {
+                return;
+            }
+
+            Level parent = block.OuterLevel;
+            Log.Info(
+                "InfSymbol " + (enter ? "enter" : "exit")
+                + " block=(" + block.xpos + "," + block.ypos + ")"
+                + " parent=" + (parent == null ? "null" : parent.hubAreaName)
+                + " infZone=" + (parent != null && parent.InfZone)
+                + " count=" + count
+                + " depth=" + depth
+                + " style=" + Draw.DrawStyle
+                + " wentToInfZone=" + World.WentToInfZone
+                + " rendered=" + rendered);
         }
 
         private Color GameWallColor(Block owner, int cell)
@@ -2670,6 +3099,48 @@ namespace PPBTool
             Color mixed = Color.Lerp(baseColor, Color.white, 0.10f);
             mixed.a = baseColor.a;
             return mixed;
+        }
+
+        private Color ResolveLevelColor(Level level, int cell)
+        {
+            Block owner = LevelGraph.ExitBlockOf(level);
+            if (owner != null)
+            {
+                return GameBlockColor(owner, cell);
+            }
+
+            if (level != null && level.blockList != null)
+            {
+                foreach (Block block in level.blockList)
+                {
+                    if (block != null && (block.val > 0.0001f || block.sat > 0.0001f))
+                    {
+                        return GameBlockColor(block, cell);
+                    }
+                }
+            }
+
+            try
+            {
+                Hub.PuzzleData data;
+                if (Hub.puzzleData != null
+                    && Hub.puzzleData.TryGetValue(World.currentLevelName, out data)
+                    && data != null
+                    && Hub.palettes != null
+                    && data.palette >= 0
+                    && data.palette < Hub.palettes.Length)
+                {
+                    Hub.HSV hsv = Hub.palettes[data.palette].root;
+                    Color color = Color.HSVToRGB(hsv.hue, hsv.sat, hsv.val);
+                    color.a = 1f;
+                    return color;
+                }
+            }
+            catch
+            {
+            }
+
+            return new Color(0.16f, 0.18f, 0.22f, 1f);
         }
 
         private Color LevelBackgroundColor(Level level)
@@ -3010,6 +3481,127 @@ namespace PPBTool
         }
 
         // -------------------------------------------------------------- inf popup
+
+        private void DrawNavMenu(float w, float h)
+        {
+            float panelW = 520f;
+            float panelH = 90f + 4f * 34f;
+            var panel = new Rect((w - panelW) * 0.5f, (h - panelH) * 0.5f, panelW, panelH);
+            var closeRect = new Rect(panel.xMax - 90f, panel.yMax - 38f, 74f, 28f);
+            var itemRects = new List<Rect>();
+            for (int i = 0; i < 4; i++)
+            {
+                itemRects.Add(new Rect(panel.x + 16f, panel.y + 44f + i * 34f, panel.width - 32f, 28f));
+            }
+
+            Event e = Event.current;
+            Vector2 mouse = e != null ? e.mousePosition : Vector2.zero;
+            if (GUI.Button(new Rect(0f, 0f, w, h), GUIContent.none, catchStyle))
+            {
+                if (!panel.Contains(mouse))
+                {
+                    showNavMenu = false;
+                    return;
+                }
+
+                for (int i = 0; i < itemRects.Count; i++)
+                {
+                    if (!itemRects[i].Contains(mouse))
+                    {
+                        continue;
+                    }
+
+                    showNavMenu = false;
+                    switch (i)
+                    {
+                        case 0: GoBackView(); break;
+                        case 1: GoForwardView(); break;
+                        case 2: GoToReference(); break;
+                        case 3: GoToPlayerView(); break;
+                    }
+
+                    return;
+                }
+
+                if (closeRect.Contains(mouse))
+                {
+                    showNavMenu = false;
+                }
+
+                return;
+            }
+
+            Fill(new Rect(0f, 0f, w, h), new Color(0f, 0f, 0f, 0.45f));
+            Fill(panel, Header);
+            Border(panel, Edge, 1f);
+            GUI.Label(new Rect(panel.x + 16f, panel.y + 10f, panel.width - 32f, 26f),
+                UiText.Get("nav_menu"), titleStyle);
+            DrawMenuButton(itemRects[0],
+                UiText.Get("back_view") + " (" + backHistory.Count + ")  Alt+Left",
+                itemRects[0].Contains(mouse));
+            DrawMenuButton(itemRects[1],
+                UiText.Get("forward_view") + " (" + forwardHistory.Count + ")  Alt+Right",
+                itemRects[1].Contains(mouse));
+            DrawMenuButton(itemRects[2], UiText.Get("back_parent"), itemRects[2].Contains(mouse));
+            DrawMenuButton(itemRects[3], UiText.Get("go_to_player"), itemRects[3].Contains(mouse));
+            DrawMenuButton(closeRect, UiText.Get("close"), closeRect.Contains(mouse));
+        }
+
+        private void DrawRefMenu(float w, float h)
+        {
+            int count = refChoices.Count;
+            float panelW = 760f;
+            float panelH = 90f + count * 34f;
+            var panel = new Rect((w - panelW) * 0.5f, (h - panelH) * 0.5f, panelW, panelH);
+            var closeRect = new Rect(panel.xMax - 90f, panel.yMax - 38f, 74f, 28f);
+            var itemRects = new List<Rect>();
+            float y = panel.y + 44f;
+            foreach (LevelReference unused in refChoices)
+            {
+                itemRects.Add(new Rect(panel.x + 16f, y, panel.width - 32f, 28f));
+                y += 34f;
+            }
+
+            Event e = Event.current;
+            Vector2 mouse = e != null ? e.mousePosition : Vector2.zero;
+            if (GUI.Button(new Rect(0f, 0f, w, h), GUIContent.none, catchStyle))
+            {
+                if (!panel.Contains(mouse))
+                {
+                    showRefMenu = false;
+                    return;
+                }
+
+                for (int i = 0; i < itemRects.Count; i++)
+                {
+                    if (itemRects[i].Contains(mouse))
+                    {
+                        LevelReference reference = refChoices[i];
+                        showRefMenu = false;
+                        NavigateToReference(reference);
+                        return;
+                    }
+                }
+
+                if (closeRect.Contains(mouse))
+                {
+                    showRefMenu = false;
+                    return;
+                }
+            }
+
+            Fill(new Rect(0f, 0f, w, h), new Color(0f, 0f, 0f, 0.45f));
+            Fill(panel, Header);
+            Border(panel, Edge, 1f);
+            GUI.Label(new Rect(panel.x + 16f, panel.y + 10f, panel.width - 32f, 26f),
+                UiText.Get("reference_chooser"), titleStyle);
+            for (int i = 0; i < itemRects.Count; i++)
+            {
+                DrawMenuButton(itemRects[i], refChoices[i].Label, itemRects[i].Contains(mouse));
+            }
+
+            DrawMenuButton(closeRect, UiText.Get("close"), closeRect.Contains(mouse));
+        }
 
         private void DrawInfMenu(float w, float h)
         {
