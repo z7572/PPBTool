@@ -1491,7 +1491,8 @@ namespace PPBTool
             Block levelOwner = LevelGraph.ExitBlockOf(level);
             if (levelOwner != null && levelOwner.OuterLevel != null)
             {
-                Color levelBg = GameBlockColor(levelOwner, 24);
+                Color levelBg = GameBlockColor(
+                    levelOwner, Mathf.Max(24, Mathf.RoundToInt(Mathf.Min(gridW, gridH))));
                 Fill(new Rect(localX, localY, gridW, gridH), levelBg);
                 DrawLevelGrid(level, levelOwner, localX, localY, cell, gridW, gridH);
             }
@@ -1938,14 +1939,13 @@ namespace PPBTool
 
             DrawBoxGrid(inner, block, sub);
 
-            float mini = Mathf.Min(inner.width / sub.width, inner.height / sub.height);
-            if (mini < 2f)
+            float cw = inner.width / sub.width;
+            float ch = inner.height / sub.height;
+            if (cw < 2f || ch < 2f)
             {
                 return;
             }
 
-            float ox = (inner.width - mini * sub.width) * 0.5f;
-            float oy = (inner.height - mini * sub.height) * 0.5f;
             GUI.BeginGroup(inner);
             for (int row = 0; row < sub.height; row++)
             {
@@ -1953,8 +1953,8 @@ namespace PPBTool
                 for (int x = 0; x < sub.width; x++)
                 {
                     int drawX = block.FlipH ? sub.width - 1 - x : x;
-                    var cr = new Rect(ox + drawX * mini, oy + row * mini, mini, mini);
-                    DrawRealCell(sub, x, y, cr, Mathf.RoundToInt(mini), depth + 1);
+                    var cr = new Rect(drawX * cw, row * ch, cw, ch);
+                    DrawRealCell(sub, x, y, cr, Mathf.RoundToInt(Mathf.Min(cw, ch)), depth + 1);
                 }
             }
 
@@ -2251,7 +2251,7 @@ namespace PPBTool
             }
 
             float fraction = cell / Mathf.Max(1f, Screen.height);
-            float val = owner.val * WallBrightness(fraction) * 2f;
+            float val = owner.val * WallBrightness(fraction) * 2f * 1.10f;
             if (owner.IsSomeInfExitBlock)
             {
                 val *= 0.55f;
