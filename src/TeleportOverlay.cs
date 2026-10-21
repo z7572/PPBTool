@@ -191,6 +191,7 @@ namespace PPBTool
         private int landingX;
         private int landingY;
         private bool landingValid;
+        private bool landingIsSpawn;
 
         public TeleportOverlay(ModConfig config, TeleportService teleporter)
         {
@@ -3433,7 +3434,8 @@ namespace PPBTool
 
             if (landingValid)
             {
-                info += " · " + UiText.Get("landing") + " (" + landingX + "," + landingY + ")";
+                info += " · " + UiText.Get(landingIsSpawn ? "spawn" : "landing")
+                    + " (" + landingX + "," + landingY + ")";
             }
 
             if (block != null && block.SubLevel != null)
@@ -3475,6 +3477,14 @@ namespace PPBTool
             }
 
             landingLevel = level;
+            if (LevelGraph.TryFindPlayerStart(level, out landingX, out landingY))
+            {
+                landingValid = true;
+                landingIsSpawn = true;
+                return;
+            }
+
+            landingIsSpawn = false;
             landingValid = LevelGraph.TryFindNearestWalkable(
                 level, level.width / 2, level.height / 2, out landingX, out landingY);
         }

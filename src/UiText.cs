@@ -63,6 +63,7 @@ namespace PPBTool
                 { "opened", new[] { "已扫描场景层级", "scene hierarchy scanned" } },
                 { "current", new[] { "当前", "current" } },
                 { "landing", new[] { "参考落点", "suggested landing" } },
+                { "spawn", new[] { "出生点", "spawn" } },
                 { "open_level", new[] { "打开层级", "open level" } },
                 { "parent_missing", new[] { "已经在最顶层", "already at the top level" } },
                 { "level_missing", new[] { "层级不在当前场景", "level is not in the current scene" } },
