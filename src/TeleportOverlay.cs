@@ -2165,7 +2165,7 @@ namespace PPBTool
                     DrawTextureTinted(inner, texture, tint);
                     if (floor.Unlocked && !floor.Won && cell >= 10)
                     {
-                        Fill(Centered(r, cell * 0.18f), Color.white);
+                        DrawPortalDot(r, cell);
                     }
 
                     return;
@@ -2177,8 +2177,23 @@ namespace PPBTool
             Border(marker, hard.a > 0.01f ? Color.white : new Color(0.9f, 0.85f, 1f, 0.9f), 1f);
             if (floor.Unlocked && !floor.Won && cell >= 10)
             {
-                Fill(Centered(r, cell * 0.16f), Color.white);
+                DrawPortalDot(r, cell);
             }
+        }
+
+        private void DrawPortalDot(Rect r, int cell)
+        {
+            if (cell < 10)
+            {
+                return;
+            }
+
+            // Game DrawPortalMarker: top-left of the portal, oscillating size.
+            float t = QuadOscillate(Time.unscaledTime * 0.5f);
+            float size = Mathf.Lerp(r.width * 0.25f, r.width * 0.42f, t);
+            float x = r.center.x - r.width * 0.42f - size * 0.5f;
+            float y = r.center.y - r.height * 0.42f - size * 0.5f;
+            Fill(new Rect(x, y, size, size), Color.white);
         }
 
         private static Color PortalHardColor(int hard)
@@ -2377,7 +2392,9 @@ namespace PPBTool
                 solved -= block.CountingDelta;
             }
 
-            int fontSize = Mathf.Clamp(Mathf.RoundToInt(cell * 0.42f), 7, 24);
+            int fontSize = World.InHub()
+                ? Mathf.Clamp(Mathf.RoundToInt(Screen.height * 0.018f), 12, 20)
+                : Mathf.Clamp(Mathf.RoundToInt(cell * 0.42f), 7, 24);
             int oldSize = tinyCenterStyle.fontSize;
             Color oldText = tinyCenterStyle.normal.textColor;
             tinyCenterStyle.fontSize = fontSize;
