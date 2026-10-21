@@ -16,8 +16,7 @@ namespace PPBTool
         private readonly ConfigEntry<bool> undoable;
         private readonly ConfigEntry<int> cellSize;
         private readonly ConfigEntry<bool> hideVoidBoxes;
-        private readonly ConfigEntry<bool> useLevelPalette;
-        private readonly ConfigEntry<bool> portalThumbnails;
+        private readonly ConfigEntry<bool> levelThumbnails;
         private readonly ConfigEntry<bool> logSceneTree;
 
         public ModConfig(ConfigFile config)
@@ -49,15 +48,14 @@ namespace PPBTool
                 "Teleport", "HideVoidBoxes", false,
                 "Hide boxes/levels that live inside an infinity void.");
 
-            useLevelPalette = config.Bind(
-                "Teleport", "UseLevelPalette", false,
-                "Draw the map with each level's own block/floor colours instead of the " +
-                "PPBTool schematic palette. Drawing only; the game palette is untouched.");
+            ConfigEntry<bool> legacyThumbnails = config.Bind(
+                "Teleport", "PortalThumbnails", true,
+                "Deprecated; use LevelThumbnails. Kept so existing configs migrate.");
 
-            portalThumbnails = config.Bind(
-                "Teleport", "PortalThumbnails", false,
-                "Draw level thumbnails on portal cells. Off keeps the current purple " +
-                "portal marker style.");
+            levelThumbnails = config.Bind(
+                "Teleport", "LevelThumbnails", legacyThumbnails.Value,
+                "Draw real level thumbnails on portal cells. On by default; off is a " +
+                "performance/compatibility fallback.");
 
             logSceneTree = config.Bind(
                 "Diagnostics", "LogSceneTree", false,
@@ -87,16 +85,10 @@ namespace PPBTool
             set { hideVoidBoxes.Value = value; }
         }
 
-        public bool UseLevelPalette
+        public bool LevelThumbnails
         {
-            get { return useLevelPalette.Value; }
-            set { useLevelPalette.Value = value; }
-        }
-
-        public bool PortalThumbnails
-        {
-            get { return portalThumbnails.Value; }
-            set { portalThumbnails.Value = value; }
+            get { return levelThumbnails.Value; }
+            set { levelThumbnails.Value = value; }
         }
 
         public bool LogSceneTree

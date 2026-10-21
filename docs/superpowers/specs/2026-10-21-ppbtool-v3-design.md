@@ -1,8 +1,8 @@
 # PPBTool v3 — 真实方块渲染、∞/ε 符号与渲染管线替换
 
 日期：2026-10-21
-状态：**待审阅**（本轮只写规格，不实施 v3）
-基线：v2 已提交（`76f4e23`），`dotnet build -c Release` 0 warning / 0 error
+状态：**已实施（v3 first pass）**
+基线：v2 已提交（`76f4e23`），v3 实施后 `dotnet build -c Release` 0 warning / 0 error
 前置文档：[v2 设计规格](2026-10-21-ppbtool-v2-design.md)
 
 ## 1. 目标
@@ -133,23 +133,22 @@ v2 已按游戏纹理/几何绘制按钮、传送门、Info、Smile、FastTravel
 
 因此 v3 选择的方案是：**复用游戏纹理 + 复刻 `Draw` 的颜色/几何/透明度公式**，由我们自己的 `GameArt` 渲染器持有独立状态，不触碰游戏的绘制队列。这样外观来源仍是游戏素材和公式，同时不会污染游戏帧。若你坚持“必须调用原函数”，需要另立一个**离屏渲染子项目**：保存/恢复全部 `Draw` 状态、清空并隔离队列、搭建独立矩阵/RenderTexture、按 `DrawEverything` 顺序消费，风险和验证成本会显著更高。
 
-### 4.1 模块拆分
+### 4.1 实现结构
+
+为降低首版改动风险，渲染代码**内联在 `TeleportOverlay.cs` 的 GameArt 区域**，逻辑上等价于以下模块：
 
 ```text
-src/GameArt/
-  TextureBank.cs      反射缓存 Draw.instance 私有纹理（墙/大墙/渐变/眼睛/嘴/∞/ε/地砖/UI）
-  ColorMath.cs        ComputeWallColor / ComputeBlockColor / CloneIntensity / FlipIntensity / HSV
-  WallArt.cs          墙纹理、四象限、连接边框、计数墙、锁定/rooted
-  BoxArt.cs           箱子底色/渐变/网格/边框 + 递归内容
-  FaceArt.cs          玩家脸/眼睛/嘴巴/eye offset/翻转
-  InfSymbolArt.cs     ∞/ε 符号（严格按 3.1 公式）
-  FloorArt.cs         地砖（沿用 v2，去掉配色开关）
-  RenderContext.cs    屏幕/单元格尺寸、透明度基准、裁剪、翻转、深度
+TextureBank         GetPrivateTexture / GetPrivateTextureArray，缓存 Draw.instance 纹理
+ColorMath           GameWallColor / GameBlockColor / GamePlayerColor / GameFloorColor / LevelBackgroundColor
+WallArt             DrawWallArt / DrawWallQuad（WallTiles / WallBig / 四象限）
+BoxArt              DrawBoxArt / DrawBoxContents / DrawBoxGrid / DrawBoxBorder（递归内容）
+FaceArt             DrawFaceArt（眼睛/嘴巴/eye offset/翻转）
+InfSymbolArt        DrawInfSymbols（严格按 3.1 公式）
+FloorArt            DrawFloor / GameFloorColor（沿用 v2 的地砖纹理，去掉配色开关）
+RenderContext       DrawRealCell（可见单元格、递归深度、翻转、裁剪）
 ```
 
-- `MapRenderer` 只负责遍历可见单元格、调用 `GameArt`、处理目标/光标/玩家高亮等 UI 叠加。
-- `TextureBank` 在首次打开地图时反射读取并缓存；字段缺失时退化为纯色/占位，不能崩溃。
-- 所有颜色/透明度公式集中在 `ColorMath`/`InfSymbolArt`，便于对照 `_decomp` 审查。
+后续若代码继续膨胀，可原样拆到 `src/GameArt/`，不改变行为。
 
 ### 4.2 递归箱子内容
 
@@ -186,7 +185,7 @@ src/GameArt/
 v2 的空格用固定 `EmptyCol` 灰色填充，这是示意图做法，v3 必须改为游戏逻辑：
 
 - 游戏没有“独立的灰色空格地砖”。一个关卡/箱子内部的空间，其底色来自**该层出口块的箱子底色**（`ComputeBlockColor(exitBlock)` + `CenterGradientTex`/背景处理）；空格就是这层底色。
-- v3 的 `EmptyArt`：
+- v3 的 `LevelBackgroundColor` / `MapBackground`：
   - 画布整体铺 `LevelBackgroundColor(level)`；
   - `LevelBackgroundColor` 使用 `level.GetExitBlock()` 的 `ComputeBlockColor`（必要时按游戏背景做暗化/去饱和），而不是固定 `EmptyCol`；
   - 空格不再覆盖固定灰色；只在没有 floor/block 时保留这层背景；
@@ -270,18 +269,23 @@ v2 的空格用固定 `EmptyCol` 灰色填充，这是示意图做法，v3 必�
 
 无其它待确认项；递归深度 4、关卡缩略图默认开启且改名，均已确认。
 
-## 8. 预计改动文件（批准后才动手）
+## 8. 实际改动文件
 
-- 新增 `src/GameArt/`：`TextureBank`、`ColorMath`、`WallArt`、`BoxArt`、`FaceArt`、`InfSymbolArt`、`FloorArt`、`RenderContext`。
-- `src/TeleportOverlay.cs`：地图渲染改为 `GameArt`；删除徽标/配色按钮；菜单改 `进入∞/ε`；“关卡缩略图”默认开启。
+- `src/TeleportOverlay.cs`：
+  - 真实绘制：`DrawRealCell`、`DrawWallArt`、`DrawBoxArt`/`DrawBoxContents`、`DrawFaceArt`、`DrawInfSymbols`、`Game*Color`、`LevelBackgroundColor`；
+  - 反射纹理：`GetPrivateTextureArray`/`EnsureGameArtTextures`；
+  - 删除“关卡配色”按钮/`usePalette`、箱子徽标、底部颜色图例；
+  - 右侧详情行追加箱子属性；
+  - 菜单 `进入∞/ε`、`ε 进入`/`∞ 退出`。
 - `src/ModConfig.cs`：删除 `UseLevelPalette`；新增 `LevelThumbnails = true`，旧 `PortalThumbnails` 作为回退。
 - `src/UiText.cs`：`进入∞/ε`、`ε`/`∞`、`关卡缩略图` 文案。
+- `src/LevelGraph.cs`：∞/ε 菜单项文案。
 - `README.md` / 本规格：说明 v3 视觉与限制。
 
 ## 9. 测试策略
 
-- 构建：`dotnet build -c Release`，0 warning / 0 error。
+- 构建：`dotnet build -c Release`，0 warning / 0 error（已通过）。
 - 代码对照：逐项对照 `_decomp/Draw.cs` 的 `DrawInfEffect`、`DrawWall`、`DrawBlock`、`DrawFace`、`DrawOrEnqueueFloor`、`GoOutOneLevel`。
 - 视觉验收：同位置游戏截图 vs 地图截图并排；重点墙、嵌套箱子、玩家脸、空格背景、多重 ∞/ε。
 - 交互回归：v2 验收清单；“关卡缩略图”开启/关闭。
-- 本轮不实施 v3；只写规格，等待批准后再排实施计划。
+- v3 first pass 已实施；实机视觉验收未执行（按用户要求不启动游戏）。

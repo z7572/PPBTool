@@ -13,7 +13,7 @@ namespace PPBTool
     /// </summary>
     internal sealed class TeleportOverlay
     {
-        private const float HeaderH = 78f;
+        private const float HeaderH = 58f;
         private const float ToolbarH = 42f;
         private const float FooterH = 64f;
         private const float Margin = 12f;
@@ -81,6 +81,27 @@ namespace PPBTool
         private Texture texUpArrow;
         private Texture texDownArrow;
 
+        private Texture[] texWallTiles;
+        private Texture[] texWallTilesFlip;
+        private Texture[] texWallBig;
+        private Texture[] texWallBigFlip;
+        private Texture texGradient;
+        private Texture texInf;
+        private Texture texInfOutline;
+        private Texture texEyeOpen;
+        private Texture texEyeOpenSmall;
+        private Texture texEyeClosed;
+        private Texture texEyeClosedSmall;
+        private Texture texPossessEye;
+        private Texture texPossessEyeSmall;
+        private Texture texMouthFrowny;
+        private Texture texMouthFlat;
+        private Texture texMouthOpen;
+        private Texture texMouthV;
+        private Texture texMouthMeh;
+        private Texture texMouthSmile;
+        private Texture texMouthSquare;
+
         private GUIStyle titleStyle;
         private GUIStyle sectionStyle;
         private GUIStyle labelStyle;
@@ -101,7 +122,6 @@ namespace PPBTool
         private World.WS savedState;
         private LevelNode selectedNode;
         private bool hideVoid;
-        private bool usePalette;
         private bool portalArt;
         private int cursorX;
         private int cursorY;
@@ -119,7 +139,6 @@ namespace PPBTool
         private Rect lastTreeView;
         private Rect lastCanvas;
         private Rect lastGrid;
-        private int lastCell = 1;
         private Vector2 lastMouse = new Vector2(-1f, -1f);
         private bool cursorWasVisible = true;
         private bool mapPressed;
@@ -144,10 +163,6 @@ namespace PPBTool
         private int landingX;
         private int landingY;
         private bool landingValid;
-
-        private Block hoveredBlock;
-        private int hoveredX;
-        private int hoveredY;
 
         public TeleportOverlay(ModConfig config, TeleportService teleporter)
         {
@@ -216,14 +231,11 @@ namespace PPBTool
 
             UiText.Refresh();
             portalCache.Clear();
-            hoveredBlock = null;
             lastCanvas = default(Rect);
             lastGrid = default(Rect);
-            lastCell = 0;
             savedState = World.State;
             hideVoid = config.HideVoidBoxes;
-            usePalette = config.UseLevelPalette;
-            portalArt = config.PortalThumbnails;
+            portalArt = config.LevelThumbnails;
             showInfMenu = false;
             showInfConfirm = false;
             titleStyle = null;
@@ -290,7 +302,6 @@ namespace PPBTool
             open = false;
             showInfMenu = false;
             showInfConfirm = false;
-            hoveredBlock = null;
             suppressFrames = 2;
             Cursor.visible = cursorWasVisible;
             World.State = savedState == World.WS.Initializing ? World.WS.Playing : savedState;
@@ -321,8 +332,6 @@ namespace PPBTool
             }
 
             landingLevel = null;
-            hoveredBlock = null;
-            lastCell = 0;
 
             graph.Build();
             sceneAtBuild = World.currentLevelName;
@@ -507,8 +516,6 @@ namespace PPBTool
             selectedNode = node;
             zoom = 1f;
             pan = Vector2.zero;
-            hoveredBlock = null;
-            lastCell = 0;
             PlaceCursorAtDefault(node);
             ScrollToSelection();
             showInfMenu = false;
@@ -662,7 +669,6 @@ namespace PPBTool
             Mouse mouse = Mouse.current;
             if (mouse == null)
             {
-                hoveredBlock = null;
                 return;
             }
 
@@ -691,27 +697,6 @@ namespace PPBTool
                     // Scroll up (positive) zooms in: larger cell size.
                     ZoomAt(guiMouse, notches > 0f ? 1.1f : 0.9f);
                 }
-            }
-
-            UpdateHover(guiMouse);
-        }
-
-        private void UpdateHover(Vector2 guiMouse)
-        {
-            hoveredBlock = null;
-            Level level = selectedNode != null ? selectedNode.Level : null;
-            if (level == null || lastCell <= 0 || !lastCanvas.Contains(guiMouse))
-            {
-                return;
-            }
-
-            int x;
-            int y;
-            if (TryCell(level, lastGrid.x, lastGrid.y, lastCell, guiMouse, out x, out y))
-            {
-                hoveredBlock = level.blocks[x, y];
-                hoveredX = x;
-                hoveredY = y;
             }
         }
 
@@ -829,16 +814,10 @@ namespace PPBTool
             ClampTreeScroll();
         }
 
-        private void TogglePalette()
-        {
-            usePalette = !usePalette;
-            config.UseLevelPalette = usePalette;
-        }
-
         private void TogglePortalArt()
         {
             portalArt = !portalArt;
-            config.PortalThumbnails = portalArt;
+            config.LevelThumbnails = portalArt;
         }
 
         private void ShowInfMenu(bool enter)
@@ -1029,26 +1008,14 @@ namespace PPBTool
             {
                 float x = rect.x + 430f;
                 float width = Mathf.Max(120f, rect.width - x - 130f);
-                GUI.Label(new Rect(x, rect.y + 4f, width, 24f),
+                GUI.Label(new Rect(x, rect.y + 5f, width, 24f),
                     Ellipsize(UiText.Get("level") + ": " + selectedNode.Path, labelStyle, width),
                     labelStyle);
-                GUI.Label(new Rect(x, rect.y + 30f, width, 20f),
+                GUI.Label(new Rect(x, rect.y + 31f, width, 20f),
                     Ellipsize(selectedNode.Subtitle, smallStyle, width), smallStyle);
             }
 
-            if (hoveredBlock != null)
-            {
-                string flags = LevelGraph.BlockFlags(hoveredBlock);
-                string kind = hoveredBlock.SubLevel != null
-                    ? UiText.Get("legend_box")
-                    : UiText.Get("legend_wall");
-                string hover = UiText.Get("hover") + ": (" + hoveredX + "," + hoveredY + ") " + kind
-                    + (string.IsNullOrEmpty(flags) ? string.Empty : " · " + flags);
-                GUI.Label(new Rect(rect.x + 16f, rect.y + 52f, rect.width - 150f, 20f),
-                    Ellipsize(hover, smallStyle, rect.width - 160f), smallStyle);
-            }
-
-            if (GUI.Button(new Rect(rect.xMax - 104f, rect.y + 24f, 90f, 30f), UiText.Get("close"), buttonStyle))
+            if (GUI.Button(new Rect(rect.xMax - 104f, rect.y + 13f, 90f, 30f), UiText.Get("close"), buttonStyle))
             {
                 Close();
             }
@@ -1110,8 +1077,7 @@ namespace PPBTool
             x = ToolButton(x, y,
                 hideVoid ? UiText.Get("show_void") : UiText.Get("hide_void"),
                 true, hideVoid, ToggleHideVoid) + 8f;
-            x = ToolButton(x, y, UiText.Get("palette"), true, usePalette, TogglePalette) + 6f;
-            x = ToolButton(x, y, UiText.Get("portal_art"), true, portalArt, TogglePortalArt) + 8f;
+            x = ToolButton(x, y, UiText.Get("level_thumbnails"), true, portalArt, TogglePortalArt) + 8f;
 
             x = ToolButton(x, y, UiText.Get("collapse_all"), true, false, CollapseAll) + 6f;
             x = ToolButton(x, y, UiText.Get("expand_all"), true, false, ExpandAll) + 6f;
@@ -1462,6 +1428,7 @@ namespace PPBTool
             }
 
             Level level = selectedNode.Level;
+            EnsureGameArtTextures();
             EnsureLanding(level);
 
             var detailRect = new Rect(panel.x + 6f, panel.y + 5f, panel.width - 12f, 24f);
@@ -1469,7 +1436,7 @@ namespace PPBTool
             GUI.Label(new Rect(detailRect.x + 8f, detailRect.y + 2f, detailRect.width - 16f, 20f),
                 Ellipsize(BuildDetail(level), labelStyle, detailRect.width - 16f), labelStyle);
 
-            var canvas = new Rect(panel.x + 8f, panel.y + 32f, panel.width - 16f, panel.height - 32f - 38f);
+            var canvas = new Rect(panel.x + 8f, panel.y + 32f, panel.width - 16f, panel.height - 32f - 8f);
             lastCanvas = canvas;
 
             Fill(canvas, MapBackground(level));
@@ -1485,7 +1452,6 @@ namespace PPBTool
                 canvas.width / Mathf.Max(1, level.width),
                 canvas.height / Mathf.Max(1, level.height));
             int cell = Mathf.Clamp(Mathf.FloorToInt(fit * 0.92f * zoom), 2, 400);
-            lastCell = cell;
             float gridW = cell * level.width;
             float gridH = cell * level.height;
 
@@ -1534,32 +1500,7 @@ namespace PPBTool
                         continue;
                     }
 
-                    Floor floor = level.floors[x, y];
-                    Block block = level.blocks[x, y];
-                    if (floor != null)
-                    {
-                        DrawFloor(r, floor, block != null, cell);
-                    }
-                    else
-                    {
-                        Fill(r, EmptyCol);
-                    }
-
-                    if (block != null)
-                    {
-                        DrawBlock(r, block, cell);
-                    }
-
-                    if (cell >= 6f)
-                    {
-                        Border(r, new Color(0f, 0f, 0f, 0.22f), 1f);
-                    }
-
-                    if (x == playerX && y == playerY)
-                    {
-                        Ring(r, PlayerCol, Mathf.Max(2f, cell * 0.10f));
-                        Fill(Centered(r, Mathf.Max(2f, cell * 0.20f)), PlayerCol);
-                    }
+                    DrawRealCell(level, x, y, r, cell, 0);
                 }
             }
 
@@ -1582,16 +1523,11 @@ namespace PPBTool
 
             DrawCursor(level, localX, localY, cell, localCanvas);
             GUI.EndGroup();
-            DrawLegend(panel, canvas);
         }
 
         private void DrawFloor(Rect r, Floor floor, bool hasBlock, int cell)
         {
-            Color color = FloorBaseColor(floor.Type);
-            if (usePalette)
-            {
-                color = PaletteFloorColor(floor, color);
-            }
+            Color color = GameFloorColor(floor, cell);
 
             if (hasBlock)
             {
@@ -1782,169 +1718,460 @@ namespace PPBTool
             Fill(new Rect(r.center.x - w * 0.60f, r.center.y + h * 0.35f, w * 1.20f, h * 0.15f), color);
         }
 
-        private void DrawBlock(Rect r, Block block, int cell)
+        private void DrawRealCell(Level level, int x, int y, Rect r, int cell, int depth)
         {
-            Color color = BlockColor(block);
-            Fill(r, color);
-
-            if (block.SubLevel != null)
+            Floor floor = level.floors[x, y];
+            Block block = level.blocks[x, y];
+            if (floor != null)
             {
-                Border(r, BoxBorder, 2f);
-                if (cell >= 18f)
-                {
-                    string badge = BadgeText(block);
-                    if (badge.Length > 0)
-                    {
-                        float badgeH = Mathf.Max(11f, cell * 0.36f);
-                        Fill(new Rect(r.x, r.yMax - badgeH, r.width, badgeH), new Color(0f, 0f, 0f, 0.35f));
-                        GUI.Label(new Rect(r.x, r.yMax - badgeH, r.width, badgeH), badge, tinyCenterStyle);
-                    }
+                DrawFloor(r, floor, block != null, cell);
+            }
 
-                    if (cell >= 30f)
-                    {
-                        GUI.Label(r, ">", centerLabelStyle);
-                    }
-                }
-                else
-                {
-                    if (block.FlipH)
-                    {
-                        Fill(new Rect(r.xMax - 4f, r.y, 3f, 3f), new Color(1f, 0.95f, 0.4f, 1f));
-                    }
+            if (block == null || depth > 5)
+            {
+                return;
+            }
 
-                    if (block.IsSomeInfEnterBlock || block.IsSomeInfExitBlock || block.GeneratedInf)
-                    {
-                        Fill(new Rect(r.x, r.y, 3f, 3f), new Color(0.85f, 0.9f, 1f, 1f));
-                    }
-                }
+            if (block.IsPlayer)
+            {
+                DrawPlayerArt(r, block, cell);
+            }
+            else if (block.SubLevel != null)
+            {
+                DrawBoxArt(r, block, cell, depth);
+            }
+            else
+            {
+                DrawWallArt(r, block, cell);
             }
         }
 
-        private Color BlockColor(Block block)
+        private void DrawWallArt(Rect r, Block block, int cell)
         {
-            if (!usePalette)
+            Block owner = LevelGraph.ExitBlockOf(block.OuterLevel);
+            Color color = GameWallColor(owner, cell);
+            bool flip = block.FlipH;
+
+            if (cell >= 256f && texWallBig != null && texWallBig.Length > 0)
             {
-                if (block.IsPlayer)
-                {
-                    return PlayerCol;
-                }
-
-                if (block.SubLevel != null)
-                {
-                    Color boxColor = LevelGraph.IsCloneBox(block)
-                        ? Color.Lerp(BoxCol, Color.white, 0.35f)
-                        : BoxCol;
-                    if (block.IsSomeInfExitBlock)
-                    {
-                        boxColor = Color.Lerp(boxColor, Color.black, 0.35f);
-                    }
-
-                    return boxColor;
-                }
-
-                return block.Possessable ? PossessCol : WallCol;
+                Texture[] big = flip && texWallBigFlip != null ? texWallBigFlip : texWallBig;
+                float hw = r.width * 0.5f;
+                float hh = r.height * 0.5f;
+                DrawWallQuad(big, block.WallBigTL, new Rect(r.x, r.y, hw, hh), color);
+                DrawWallQuad(big, block.WallBigTR, new Rect(r.x + hw, r.y, hw, hh), color);
+                DrawWallQuad(big, block.WallBigBL, new Rect(r.x, r.y + hh, hw, hh), color);
+                DrawWallQuad(big, block.WallBigBR, new Rect(r.x + hw, r.y + hh, hw, hh), color);
+                return;
             }
 
-            Block levelOwner = LevelGraph.ExitBlockOf(block.OuterLevel);
-
-            // Wall blocks carry no colours of their own (LoadLevel only writes hue/sat/val
-            // for "Block" lines), so they must inherit the room/exit-block palette.
-            if (block.SubLevel == null)
+            Texture[] tiles = flip && texWallTilesFlip != null ? texWallTilesFlip : texWallTiles;
+            int index = flip ? block.WallTileIndexFlipH : block.WallTileIndex;
+            Texture texture = PickTexture(tiles, index);
+            if (texture != null)
             {
-                float wallHue = levelOwner != null ? levelOwner.hue : block.hue;
-                float wallSat = levelOwner != null ? levelOwner.sat : block.sat;
-                float wallVal = levelOwner != null ? levelOwner.val : block.val;
-                wallVal = Mathf.Clamp01(wallVal * 2f);
-                if (wallVal < 0.28f)
-                {
-                    wallVal = 0.28f;
-                }
+                DrawTextureTinted(r, texture, color);
+            }
+            else
+            {
+                Fill(r, color);
+            }
+        }
 
-                Color wall = Color.HSVToRGB(
-                    Mathf.Repeat(wallHue, 1f),
-                    Mathf.Clamp01(wallSat),
-                    wallVal);
-                if (block.IsPlayer)
-                {
-                    wall = Color.Lerp(wall, PlayerCol, 0.55f);
-                }
+        private void DrawWallQuad(Texture[] textures, int index, Rect r, Color color)
+        {
+            Texture texture = PickTexture(textures, index);
+            if (texture != null)
+            {
+                DrawTextureTinted(r, texture, color);
+            }
+            else
+            {
+                Fill(r, color);
+            }
+        }
 
-                return wall;
+        private void DrawBoxArt(Rect r, Block block, int cell, int depth)
+        {
+            Color color = GameBlockColor(block, cell);
+            Level sub = block.SubLevel;
+            if (sub != null && sub.InfZone)
+            {
+                color.a = 0f;
             }
 
+            Fill(r, color);
+            if (texGradient != null)
+            {
+                DrawTextureTinted(r, texGradient, new Color(1f, 1f, 1f, 0.42f));
+            }
+
+            if (sub != null && cell >= 14f && depth < 4)
+            {
+                DrawBoxContents(r, block, sub, cell, depth);
+            }
+
+            if (sub != null && Prefs.Grid)
+            {
+                DrawBoxGrid(r, block, sub, color);
+            }
+
+            DrawBoxBorder(r, block, sub, cell);
+            DrawInfSymbols(r, block, cell);
+        }
+
+        private void DrawBoxGrid(Rect r, Block block, Level sub, Color color)
+        {
+            float line = Mathf.Max(1f, r.width * 0.02f);
+            Color grid = Color.Lerp(color, Color.black, 0.42f);
+            grid.a = 0.65f;
+            for (int i = 1; i < sub.width; i++)
+            {
+                Fill(new Rect(r.x + r.width * i / sub.width, r.y, line, r.height), grid);
+            }
+
+            for (int i = 1; i < sub.height; i++)
+            {
+                Fill(new Rect(r.x, r.y + r.height * i / sub.height, r.width, line), grid);
+            }
+        }
+
+        private void DrawBoxContents(Rect r, Block block, Level sub, int cell, int depth)
+        {
+            float pad = Mathf.Max(1f, cell * 0.09f);
+            var inner = new Rect(r.x + pad, r.y + pad, r.width - pad * 2f, r.height - pad * 2f);
+            if (inner.width < 4f || inner.height < 4f || sub.width <= 0 || sub.height <= 0)
+            {
+                return;
+            }
+
+            Fill(inner, LevelBackgroundColor(sub));
+            float mini = Mathf.Min(inner.width / sub.width, inner.height / sub.height);
+            if (mini < 2f)
+            {
+                return;
+            }
+
+            float ox = (inner.width - mini * sub.width) * 0.5f;
+            float oy = (inner.height - mini * sub.height) * 0.5f;
+            GUI.BeginGroup(inner);
+            for (int row = 0; row < sub.height; row++)
+            {
+                int y = sub.height - 1 - row;
+                for (int x = 0; x < sub.width; x++)
+                {
+                    int drawX = block.FlipH ? sub.width - 1 - x : x;
+                    var cr = new Rect(ox + drawX * mini, oy + row * mini, mini, mini);
+                    DrawRealCell(sub, x, y, cr, Mathf.RoundToInt(mini), depth + 1);
+                }
+            }
+
+            GUI.EndGroup();
+        }
+
+        private void DrawBoxBorder(Rect r, Block block, Level sub, int cell)
+        {
+            float thickness = Mathf.Clamp(cell * 0.055f, 1f, 4f);
+            Color border = block.borderColor;
+            if (border.a <= 0.01f)
+            {
+                border = new Color(1f, 1f, 1f, 0.22f);
+            }
+
+            if (sub == null || !sub.leftWall)
+            {
+                Fill(new Rect(r.x, r.y, thickness, r.height), border);
+            }
+
+            if (sub == null || !sub.rightWall)
+            {
+                Fill(new Rect(r.xMax - thickness, r.y, thickness, r.height), border);
+            }
+
+            if (sub == null || !sub.upWall)
+            {
+                Fill(new Rect(r.x, r.y, r.width, thickness), border);
+            }
+
+            if (sub == null || !sub.downWall)
+            {
+                Fill(new Rect(r.x, r.yMax - thickness, r.width, thickness), border);
+            }
+        }
+
+        private void DrawPlayerArt(Rect r, Block block, int cell)
+        {
+            Color color = block.SubLevel != null
+                ? GameBlockColor(block, cell)
+                : GamePlayerColor(block, cell);
+            Fill(r, color);
+            DrawFaceArt(r, block, cell);
+            DrawInfSymbols(r, block, cell);
+        }
+
+        private void DrawFaceArt(Rect r, Block block, int cell)
+        {
+            float fraction = cell / Mathf.Max(1f, Screen.height);
+            float alpha = -Mathf.Log10(fraction + 15f) + 1.5f;
+            if (block.SubLevel != null && !block.SubLevel.FilledWithWalls)
+            {
+                alpha = -Mathf.Log10(fraction + 1.5f) + 0.5f;
+            }
+
+            alpha = Mathf.Clamp01(alpha);
+            if (alpha <= 0.01f)
+            {
+                return;
+            }
+
+            bool possess = !block.DrawIsPlayer && block.Possessable;
+            Texture eye = possess ? texPossessEye : texEyeOpen;
+            Texture eyeSmall = possess ? texPossessEyeSmall : texEyeOpenSmall;
+            if (block.FaceAnimT > 0f && Mathf.Floor(block.FaceAnimT * 7.12f) % 26f == 0f)
+            {
+                eye = texEyeClosed;
+                eyeSmall = texEyeClosedSmall;
+            }
+
+            if (cell * 0.2f < 50f && eyeSmall != null)
+            {
+                eye = eyeSmall;
+            }
+
+            if (eye == null)
+            {
+                return;
+            }
+
+            float ew = r.width * 0.2f;
+            float eh = r.height * 0.2f;
+            float left = -0.25f;
+            float right = 0.25f;
+            float ey = -0.05f + block.eyeYOffset * 1.5f;
+            left += block.eyeXOffset > 0f ? block.eyeXOffset : block.eyeXOffset * 1.5f;
+            right += block.eyeXOffset < 0f ? block.eyeXOffset : block.eyeXOffset * 1.5f;
+            if (block.FlipH)
+            {
+                float swap = left;
+                left = -right;
+                right = -swap;
+            }
+
+            Color ink = new Color(0f, 0f, 0f, alpha);
+            DrawTextureTinted(new Rect(r.center.x + r.width * left - ew * 0.5f, r.center.y + r.height * ey - eh * 0.5f, ew, eh), eye, ink);
+            DrawTextureTinted(new Rect(r.center.x + r.width * right - ew * 0.5f, r.center.y + r.height * ey - eh * 0.5f, ew, eh), eye, ink);
+
+            Texture mouth = null;
+            if (block.PlayerOrder == 1)
+            {
+                mouth = texMouthFrowny;
+            }
+            else if (block.PlayerOrder == 2)
+            {
+                mouth = null;
+            }
+            else if (block.PlayerOrder == 3)
+            {
+                mouth = texMouthV;
+            }
+            else if (block.PlayerOrder == 4)
+            {
+                mouth = texMouthMeh;
+            }
+            else if (block.PlayerOrder == 5)
+            {
+                mouth = texMouthOpen;
+            }
+            else if (block.PlayerOrder >= 6)
+            {
+                mouth = texMouthSquare;
+            }
+            else if (World.smile)
+            {
+                mouth = texMouthSmile;
+            }
+
+            if (mouth != null)
+            {
+                float mw = r.width * 0.27f;
+                float mh = r.height * 0.27f;
+                float mx = 1.5f * block.eyeXOffset;
+                float my = 0.15f + 1.5f * block.eyeYOffset;
+                if (block.FlipH)
+                {
+                    mx *= -1f;
+                }
+
+                DrawTextureTinted(new Rect(r.center.x + r.width * mx - mw * 0.5f, r.center.y + r.height * my - mh * 0.5f, mw, mh), mouth, ink);
+            }
+        }
+
+        private void DrawInfSymbols(Rect r, Block block, int cell)
+        {
+            Texture texture;
+            int count;
+            if (block.IsSomeInfEnterBlock)
+            {
+                texture = texInfOutline;
+                count = block.SomeInfEnterNum + 1;
+            }
+            else if (block.IsSomeInfExitBlock && block.SubLevel != null && block.SubLevel.infExitBlocks != null)
+            {
+                texture = texInf;
+                count = block.SubLevel.infExitBlocks.IndexOf(block) + 1;
+            }
+            else
+            {
+                return;
+            }
+
+            if (texture == null || count <= 0)
+            {
+                return;
+            }
+
+            float alpha = Mathf.Clamp01(
+                -Mathf.Log10(((r.width + r.height) * 0.5f) / Mathf.Max(1f, Screen.height) + 0.5f) + 0.22f);
+            Color tint = new Color(1f, 1f, 1f, alpha);
+            if (count == 1)
+            {
+                float w = r.width * 0.9f;
+                float h = r.height * 0.9f;
+                DrawTextureTinted(new Rect(r.center.x - w * 0.5f, r.center.y - h * 0.5f, w, h), texture, tint);
+                return;
+            }
+
+            float symbolW = r.width / (count + 1f);
+            float symbolH = r.height / (count + 1f);
+            float gap = (r.height - symbolH * count) / (count + 1f);
+            float drawW = symbolW * 1.8f;
+            float drawH = symbolH * 1.8f;
+            float startY = r.center.y - drawH * 0.5f - (symbolH * 0.5f + gap * 0.5f) * (count - 1);
+            for (int i = 0; i < count; i++)
+            {
+                DrawTextureTinted(
+                    new Rect(r.center.x - drawW * 0.5f, startY + i * (symbolH + gap), drawW, drawH),
+                    texture,
+                    tint);
+            }
+        }
+
+        private Color GameWallColor(Block owner, int cell)
+        {
+            if (owner == null)
+            {
+                return new Color(0.34f, 0.36f, 0.42f, 1f);
+            }
+
+            float fraction = cell / Mathf.Max(1f, Screen.height);
+            float val = owner.val * WallBrightness(fraction) * 2f;
+            if (owner.IsSomeInfExitBlock)
+            {
+                val *= 0.55f;
+            }
+            else if (owner.SubLevel != null && LevelGraph.IsCloneBox(owner))
+            {
+                val += 0.4f;
+            }
+
+            val = Mathf.Clamp(val, 0.22f, 1f);
+            return Hsv(owner.hue, owner.sat, val);
+        }
+
+        private Color GameBlockColor(Block block, int cell)
+        {
+            Block owner = LevelGraph.ExitBlockOf(block.OuterLevel);
             float hue = block.hue;
             float sat = block.sat;
             float val = block.val;
-            if (Mathf.Approximately(val, 0f) && Mathf.Approximately(sat, 0f) && levelOwner != null)
+            if (val <= 0.0001f && owner != null)
             {
-                hue = levelOwner.hue;
-                sat = levelOwner.sat;
-                val = levelOwner.val;
+                hue = owner.hue;
+                sat = owner.sat;
+                val = owner.val;
             }
 
-            val = Mathf.Clamp01(val);
+            float fraction = cell / Mathf.Max(1f, Screen.height);
+            val = val * BlockBrightness(fraction) * 0.9f;
             if (block.IsSomeInfExitBlock)
             {
                 val *= 0.55f;
             }
             else if (LevelGraph.IsCloneBox(block))
             {
-                val = Mathf.Clamp01(val + 0.42f);
+                val += 0.42f;
                 sat *= 0.76f;
             }
 
-            Color color = Color.HSVToRGB(
-                Mathf.Repeat(hue, 1f),
-                Mathf.Clamp01(sat),
-                Mathf.Clamp01(val));
-
-            if (block.IsPlayer)
-            {
-                color = Color.Lerp(color, PlayerCol, 0.55f);
-            }
-
-            return color;
+            val = Mathf.Clamp(val, 0.05f, 1f);
+            return Hsv(hue, sat, val);
         }
 
-        private static string BadgeText(Block block)
+        private Color GamePlayerColor(Block block, int cell)
         {
-            string text = string.Empty;
-            if (block.FlipH)
+            if (block.val > 0.0001f || block.sat > 0.0001f)
             {
-                text += "F";
+                return GameBlockColor(block, cell);
             }
 
-            if (LevelGraph.IsCloneBox(block))
+            Block owner = LevelGraph.ExitBlockOf(block.OuterLevel);
+            if (owner != null)
             {
-                text += "C";
+                return Color.Lerp(GameBlockColor(owner, cell), PlayerCol, 0.45f);
             }
 
-            if (block.IsSomeInfEnterBlock)
+            return Color.Lerp(PlayerCol, Color.white, 0.2f);
+        }
+
+        private Color GameFloorColor(Floor floor, int cell)
+        {
+            if (floor.Type == Floor.FloorType.DemoEnd)
             {
-                text += "I";
+                return new Color(0.05f, 0.05f, 0.06f, 1f);
             }
 
-            if (block.IsSomeInfExitBlock)
+            Block owner = LevelGraph.ExitBlockOf(floor.OuterLevel);
+            if (owner == null)
             {
-                text += "O";
+                return FloorBaseColor(floor.Type);
             }
 
-            if (block.GeneratedInf)
+            return Color.Lerp(GameBlockColor(owner, cell), Color.white, 0.10f);
+        }
+
+        private Color LevelBackgroundColor(Level level)
+        {
+            Block owner = LevelGraph.ExitBlockOf(level);
+            if (owner == null)
             {
-                text += "*";
+                return new Color(0.06f, 0.07f, 0.09f, 1f);
             }
 
-            if (block.Possessable)
+            return Color.Lerp(GameBlockColor(owner, 24), Color.black, 0.45f);
+        }
+
+        private static float WallBrightness(float fraction)
+        {
+            return -0.25f * Mathf.Log(fraction + 0.005f, 20f) + 0.5f;
+        }
+
+        private static float BlockBrightness(float fraction)
+        {
+            return -0.25f * Mathf.Log(fraction + 0.005f, 20f) + 0.5f;
+        }
+
+        private static Color Hsv(float hue, float sat, float val)
+        {
+            return Color.HSVToRGB(Mathf.Repeat(hue, 1f), Mathf.Clamp01(sat), Mathf.Clamp01(val));
+        }
+
+        private static Texture PickTexture(Texture[] textures, int index)
+        {
+            if (textures == null || index < 0 || index >= textures.Length)
             {
-                text += "P";
+                return null;
             }
 
-            if (block.Locked)
-            {
-                text += "L";
-            }
-
-            return text;
+            return textures[index];
         }
 
         private void DrawCursor(Level level, float originX, float originY, int cell, Rect canvas)
@@ -1993,40 +2220,6 @@ namespace PPBTool
             }
         }
 
-        private void DrawLegend(Rect panel, Rect canvas)
-        {
-            var area = new Rect(panel.x + 8f, canvas.yMax + 3f, panel.width - 16f, 32f);
-            Fill(area, Bar);
-
-            float x = area.x + 8f;
-            float y = area.y + 2f;
-            float rowY = y;
-            LegendItem(ref x, ref rowY, area, WallCol, UiText.Get("legend_wall"));
-            LegendItem(ref x, ref rowY, area, BoxCol, UiText.Get("legend_box"));
-            LegendItem(ref x, ref rowY, area, PlayerCol, UiText.Get("legend_player"));
-            LegendItem(ref x, ref rowY, area, PortalCol, UiText.Get("legend_portal"));
-            LegendItem(ref x, ref rowY, area, TargetCol, UiText.Get("legend_target"));
-            LegendItem(ref x, ref rowY, area, VoidText, UiText.Get("legend_void"));
-            LegendItem(ref x, ref rowY, area, FloorButton, UiText.Get("legend_button"));
-            LegendItem(ref x, ref rowY, area, FloorFinish, UiText.Get("legend_finish"));
-            LegendItem(ref x, ref rowY, area, FloorFast, UiText.Get("legend_fast"));
-            LegendItem(ref x, ref rowY, area, FloorBreak, UiText.Get("legend_break"));
-        }
-
-        private void LegendItem(ref float x, ref float y, Rect area, Color color, string text)
-        {
-            float width = smallStyle.CalcSize(new GUIContent(text)).x + 30f;
-            if (x + width > area.xMax - 8f)
-            {
-                x = area.x + 8f;
-                y += 15f;
-            }
-
-            Fill(new Rect(x, y + 3f, 10f, 10f), color);
-            GUI.Label(new Rect(x + 14f, y - 1f, width - 14f, 15f), text, smallStyle);
-            x += width + 8f;
-        }
-
         private string BuildDetail(Level level)
         {
             string coord = "(" + cursorX + ", " + cursorY + ")";
@@ -2072,7 +2265,35 @@ namespace PPBTool
                 info += " · " + UiText.Get("landing") + " (" + landingX + "," + landingY + ")";
             }
 
+            if (block != null && block.SubLevel != null)
+            {
+                string attributes = BlockAttributes(block);
+                if (!string.IsNullOrEmpty(attributes))
+                {
+                    info += " · " + attributes;
+                }
+            }
+
             return coord + "  " + info;
+        }
+
+        private static string BlockAttributes(Block block)
+        {
+            string flags = LevelGraph.BlockFlags(block);
+            if (block.SubLevel != null)
+            {
+                if (flags == "box")
+                {
+                    return string.Empty;
+                }
+
+                if (flags.StartsWith("box "))
+                {
+                    return flags.Substring(4);
+                }
+            }
+
+            return flags;
         }
 
         private void EnsureLanding(Level level)
@@ -2134,37 +2355,7 @@ namespace PPBTool
                 return VoidBg;
             }
 
-            if (!usePalette)
-            {
-                return new Color(0.06f, 0.07f, 0.09f, 1f);
-            }
-
-            Block exit = LevelGraph.ExitBlockOf(level);
-            if (exit == null)
-            {
-                return new Color(0.06f, 0.07f, 0.09f, 1f);
-            }
-
-            return Color.HSVToRGB(
-                Mathf.Repeat(exit.hue, 1f),
-                Mathf.Clamp01(exit.sat * 0.45f),
-                0.06f);
-        }
-
-        private Color PaletteFloorColor(Floor floor, Color fallback)
-        {
-            Block exit = LevelGraph.ExitBlockOf(floor.OuterLevel);
-            if (exit == null)
-            {
-                return fallback;
-            }
-
-            Color color = Color.HSVToRGB(
-                Mathf.Repeat(exit.hue, 1f),
-                Mathf.Clamp01(exit.sat * 0.60f),
-                0.90f);
-            color.a = fallback.a;
-            return color;
+            return LevelBackgroundColor(level);
         }
 
         private void HandleMapInput(Rect canvas, Level level, float originX, float originY, int cell)
@@ -2384,7 +2575,8 @@ namespace PPBTool
 
             if (selectedNode != null)
             {
-                string label = UiText.Get("enter_inf") + " #" + next + UiText.Get("not_generated");
+                string label = (infMenuEnter ? UiText.Get("inf_enter") : UiText.Get("inf_exit"))
+                    + " #" + next + UiText.Get("not_generated");
                 DrawMenuButton(genRect, label, genRect.Contains(mouse));
             }
 
@@ -2426,6 +2618,26 @@ namespace PPBTool
                 texSmile = GetPrivateTexture("SmileFloorTex");
                 texUpArrow = GetPrivateTexture("UpArrow");
                 texDownArrow = GetPrivateTexture("DownArrow");
+                texWallTiles = GetPrivateTextureArray("WallTiles");
+                texWallTilesFlip = GetPrivateTextureArray("WallTilesFlip");
+                texWallBig = GetPrivateTextureArray("WallBig");
+                texWallBigFlip = GetPrivateTextureArray("WallBigFlip");
+                texGradient = GetPrivateTexture("CenterGradientTex");
+                texInf = GetPrivateTexture("InfParticleTex");
+                texInfOutline = GetPrivateTexture("InfParticleOutlineTex");
+                texEyeOpen = GetPrivateTexture("EyeOpen");
+                texEyeOpenSmall = GetPrivateTexture("EyeOpenSmall");
+                texEyeClosed = GetPrivateTexture("EyeClosed");
+                texEyeClosedSmall = GetPrivateTexture("EyeClosedSmall");
+                texPossessEye = GetPrivateTexture("PossessEye");
+                texPossessEyeSmall = GetPrivateTexture("PossessEyeSmall");
+                texMouthFrowny = GetPrivateTexture("FrownyMouth");
+                texMouthFlat = GetPrivateTexture("FlatMouth");
+                texMouthOpen = GetPrivateTexture("OpenMouth");
+                texMouthV = GetPrivateTexture("VMouth");
+                texMouthMeh = GetPrivateTexture("MehMouth");
+                texMouthSmile = GetPrivateTexture("SmileMouth");
+                texMouthSquare = GetPrivateTexture("SquareMouth");
             }
 
             Font font = GetGameFont();
@@ -2579,6 +2791,63 @@ namespace PPBTool
             }
 
             return null;
+        }
+
+        private static Texture[] GetPrivateTextureArray(string fieldName)
+        {
+            try
+            {
+                if (Draw.instance != null)
+                {
+                    FieldInfo field = typeof(Draw).GetField(
+                        fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+                    if (field != null)
+                    {
+                        return field.GetValue(Draw.instance) as Texture[];
+                    }
+                }
+            }
+            catch
+            {
+                // Optional cosmetic textures.
+            }
+
+            return null;
+        }
+
+        private void EnsureGameArtTextures()
+        {
+            if (texWallTiles == null)
+            {
+                texWallTiles = GetPrivateTextureArray("WallTiles");
+                texWallTilesFlip = GetPrivateTextureArray("WallTilesFlip");
+                texWallBig = GetPrivateTextureArray("WallBig");
+                texWallBigFlip = GetPrivateTextureArray("WallBigFlip");
+            }
+
+            if (texGradient == null)
+            {
+                texGradient = GetPrivateTexture("CenterGradientTex");
+                texInf = GetPrivateTexture("InfParticleTex");
+                texInfOutline = GetPrivateTexture("InfParticleOutlineTex");
+            }
+
+            if (texEyeOpen == null)
+            {
+                texEyeOpen = GetPrivateTexture("EyeOpen");
+                texEyeOpenSmall = GetPrivateTexture("EyeOpenSmall");
+                texEyeClosed = GetPrivateTexture("EyeClosed");
+                texEyeClosedSmall = GetPrivateTexture("EyeClosedSmall");
+                texPossessEye = GetPrivateTexture("PossessEye");
+                texPossessEyeSmall = GetPrivateTexture("PossessEyeSmall");
+                texMouthFrowny = GetPrivateTexture("FrownyMouth");
+                texMouthFlat = GetPrivateTexture("FlatMouth");
+                texMouthOpen = GetPrivateTexture("OpenMouth");
+                texMouthV = GetPrivateTexture("VMouth");
+                texMouthMeh = GetPrivateTexture("MehMouth");
+                texMouthSmile = GetPrivateTexture("SmileMouth");
+                texMouthSquare = GetPrivateTexture("SquareMouth");
+            }
         }
 
         private Texture GetPortalTexture(string scene)

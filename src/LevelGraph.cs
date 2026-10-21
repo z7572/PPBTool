@@ -54,8 +54,7 @@ namespace PPBTool
         {
             get
             {
-                return Direction + " · " + UiText.Get("enter_inf")
-                    + " #" + Index + " → " + TargetLabel;
+                return Direction + " #" + Index + " → " + TargetLabel;
             }
         }
 
