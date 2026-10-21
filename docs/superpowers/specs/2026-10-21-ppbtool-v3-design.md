@@ -19,9 +19,11 @@ v2 的地图仍是“示意图 + 自绘图案”。v3 改为**按游戏原始绘
 4. 按游戏逻辑绘制 **∞ / ε 符号**：
    - ∞ = 无限退出（`IsSomeInfExitBlock`，`InfParticleTex`）；
    - ε = 无限进入（`IsSomeInfEnterBlock`，`InfParticleOutlineTex`）；
-   - 多重无限渲染多个符号，位置/尺寸/透明度/换行与游戏一致。
+   - 多重无限渲染多个符号，尺寸缩小并纵向堆叠，布局/透明度与游戏一致。
 5. 菜单“进入无限区”改为 **“进入∞/ε”**，条目使用 `ε #n` / `∞ #n`，不再使用“新建”字样。
-6. 保留 v2 的交互：点击箱子进入层级、点击空格传送、树折叠/水平滚动/宽度调节、暂停 F8、Undo 兼容等。
+6. **空格/关卡背景**使用该层出口块的游戏背景色，不再固定深灰。
+7. **“关卡缩略图”**（原“传送门缩略图”）保留，默认开启。
+8. 保留 v2 的交互：点击箱子进入层级、点击空格传送、树折叠/水平滚动/宽度调节、暂停 F8、Undo 兼容等。
 
 ## 2. 非目标
 
@@ -66,7 +68,8 @@ if (count == 1) {
 - 多重无限：
   - 进入索引 `SomeInfEnterNum = 0/1/2…` → `count = index + 1`；
   - 退出索引 = 该块在 `SubLevel.infExitBlocks` 中的位置 → `count = index + 1`；
-  - `count > 1` 时**纵向堆叠**，尺寸缩小、间距按公式，最多可超出单个格子（绘制区域允许溢出）。
+  - `count > 1` 时**纵向堆叠**：符号尺寸按 `1/(count+1)` 缩小，间距按 `gapY`，不额外换行/缩放。
+- 注意：公式给出的绘制矩形在 `count > 1` 时会比单元格略高约 4–8%（例如 N=2 约 1.044×、N=3 约 1.075×），但 `InfParticle*` 纹理自带透明边距，**实际可见符号落在格内**；因此按原公式绘制，不要人为把符号裁到格子内，也不要自己再加换行。
 - `cloneFade` 在静态地图中为 false；屏幕截图模式倍增系数不适用。
 
 ### 3.2 墙：`Draw.DrawWall`（`Draw.cs:3009`）
@@ -111,6 +114,25 @@ v2 已按游戏纹理/几何绘制按钮、传送门、Info、Smile、FastTravel
 
 ## 4. 设计
 
+### 4.0 为什么不能直接调用游戏的 Draw
+
+“直接调用原函数”听起来最忠实，但游戏的 `Draw` 不是无状态的绘制库，而是一套**全局状态 + 队列 + 摄像机投影**的即时渲染器：
+
+1. **全局可变状态**：
+   `Draw.drawRect`、`clamp`/`clampRect`、`screenWidth/screenHeight`、`FlipH`、`FocusBlock`、`numLevelsUp`、`CameraMode`、`DrawStyle`、`hsv`、`minDrawSize`、`maxDepthMovingBlocks` 等都被所有绘制函数共享。直接调用前必须完整保存/恢复；任何遗漏都会污染游戏本帧/后续帧。
+2. **不是“调用即画完”，而是“画一部分 + 入队”**：
+   `DrawBlock` 只立即绘制底色/渐变/网格/边框的一部分，同时把脸、∞符号、flip shine、portal marker 等 `DrawTicket` 放进 `qFace`、`qInfEffect`、`qShine`、`qPortalMarker`、`qLev` 等静态队列；这些队列由 `Draw.DrawEverything()` 按固定顺序、配合 `StackClampTicket`/`EnableTicketClamp` 统一消费。单独调用 `DrawBlock` 会留下未消费的队列项，之后被游戏自己的绘制循环在**错误坐标**上画出来，或直接丢失。
+3. **坐标/比例依赖游戏摄像机**：
+   这些函数假定 `x/y/width/height` 是游戏屏幕空间中的投影结果，`fractionOfScreen`、边框厚度、墙大/小图分支、`ComputeWallColor/ComputeBlockColor` 都依赖 `screenHeight` 和当前 `numLevelsUp`/`FocusBlock`。我们的地图是任意单元格尺寸的独立面板，直接传入会命中不同分支（例如墙的大图/小图、边框厚度、透明度），外观与游戏不一致。
+4. **绘制目标/GUI 矩阵**：
+   部分路径用 `Graphics.DrawTexture` 立即绘制，部分经 `GUI`/`DrawTexture`，依赖当前 GUI 矩阵、裁剪和渲染目标。地图在 `OnGUI` 里绘制，若直接复用，需要自己搭建并恢复整套矩阵/裁剪/渲染目标；否则会画到错误位置或污染游戏画面。
+5. **静态队列是共享的**：
+   即使保存/恢复了字段，队列中残留的 ticket 仍然会影响游戏之后的绘制；必须在调用前后清空/隔离队列，并复刻 `DrawEverything` 的消费顺序——这实质上就是重写一遍渲染管线。
+6. **私有 API/版本脆弱**：
+   `Draw` 的方法/字段（`qFace`、`DrawTicket` 等）都是私有实现细节；跨游戏版本/模组环境直接调用容易因签名/顺序变化崩溃。
+
+因此 v3 选择的方案是：**复用游戏纹理 + 复刻 `Draw` 的颜色/几何/透明度公式**，由我们自己的 `GameArt` 渲染器持有独立状态，不触碰游戏的绘制队列。这样外观来源仍是游戏素材和公式，同时不会污染游戏帧。若你坚持“必须调用原函数”，需要另立一个**离屏渲染子项目**：保存/恢复全部 `Draw` 状态、清空并隔离队列、搭建独立矩阵/RenderTexture、按 `DrawEverything` 顺序消费，风险和验证成本会显著更高。
+
 ### 4.1 模块拆分
 
 ```text
@@ -142,7 +164,7 @@ src/GameArt/
    - 子层每格尺寸 = `inner.width / SubLevel.width`、`inner.height / SubLevel.height`；
    - 递归到 `depth >= 4` 或子格 < 2px 时停止，画纯色占位，避免无限递归/性能爆炸。
 5. 画箱子边框（`leftWall/rightWall/upWall/downWall`）。
-6. 画 ∞/ε 符号（可溢出单元格，不被内容裁剪；符号层在内容之后）。
+6. 画 ∞/ε 符号（严格按 3.1 公式；符号层在内容之后，只受地图面板裁剪，不被箱子内容区裁剪）。
 
 翻转/坐标：
 - 子层内容按 `GoOutOneLevel` 的规则处理 `FlipH`、`DrawXOffset/DrawYOffset`（静态时 offset=0）；
@@ -158,6 +180,20 @@ src/GameArt/
 - 边框由 `Level.leftWall/rightWall/upWall/downWall` 控制；`Rooted*`/`Locked`/`Counting` 按 `DrawWall` 逻辑。
 - 颜色使用 `ComputeWallColor(level.GetExitBlock(), ...)`；墙自己的 `hue/sat/val` 不参与（通常为 0）。
 - 需要绘制 `DrawBlockShadow`/`DrawBlockBorder` 的阴影/边框，避免“只有色块”的观感。
+
+### 4.3.1 空格与关卡背景
+
+v2 的空格用固定 `EmptyCol` 灰色填充，这是示意图做法，v3 必须改为游戏逻辑：
+
+- 游戏没有“独立的灰色空格地砖”。一个关卡/箱子内部的空间，其底色来自**该层出口块的箱子底色**（`ComputeBlockColor(exitBlock)` + `CenterGradientTex`/背景处理）；空格就是这层底色。
+- v3 的 `EmptyArt`：
+  - 画布整体铺 `LevelBackgroundColor(level)`；
+  - `LevelBackgroundColor` 使用 `level.GetExitBlock()` 的 `ComputeBlockColor`（必要时按游戏背景做暗化/去饱和），而不是固定 `EmptyCol`；
+  - 空格不再覆盖固定灰色；只在没有 floor/block 时保留这层背景；
+  - 箱子内部同理：`BoxArt` 的底色就是子层的背景，递归内容画在其上；
+  - 网格线（`Prefs.Grid`）使用游戏 `DrawBlock` 的网格颜色公式（`val *= 0.65; val -= 0.075; clone 修正`），不是 UI 自己的分隔线。
+- 验收：开启/关闭关卡缩略图、切换不同关卡时，空格底色应随该层出口块颜色变化，而不是永远深灰。
+- 根层没有出口块（`GetExitBlock() == null`）时，退回游戏背景/深色中性底，不要把“没有出口块”误判成固定 `EmptyCol`。
 
 ### 4.4 玩家脸
 
@@ -176,7 +212,7 @@ src/GameArt/
   - `count` 由 `SomeInfEnterNum+1` 或 `infExitBlocks.IndexOf+1` 计算；
   - `alpha = -log10(((w+h)/2)/Screen.height + 0.5) + 0.22`；
   - `count==1`：0.9 cell 居中；`count>1`：1.8× 缩放、纵向堆叠、间距公式；
-  - 允许符号超出单元格（与原版一致），但要在面板层级裁剪；不要被箱子内容裁剪。
+  - 严格按原公式绘制，**不要自行换行/缩放**；公式矩形虽略大于单元格，但纹理透明边距让可见符号保持在格内。不要把符号裁到单元格内部；只由地图面板统一裁剪。
 - `DrawBlock` 的符号层在内容/边框之后；多重无限全部绘制，不合并。
 
 ### 4.6 菜单与文案
@@ -195,9 +231,10 @@ src/GameArt/
 - 删除 `[Teleport] UseLevelPalette` 配置与工具栏“关卡配色”按钮。
 - 删除箱子下方的 `F/C/I/O/*/P/L` 徽标绘制（`BadgeText`/`DrawBlock` 底部条）。
 - 标题栏悬停属性文本保留（克隆/翻转/∞/可附身等），作为唯一文字属性说明。
-- 传送门缩略图开关保留还是删除，待确认：
-  - 若“直接使用游戏绘制”包括传送门缩略图，则默认开启并保留开关作为性能选项；
-  - 或直接删除开关，始终绘制缩略图。
+- 传送门缩略图保留，**默认开启**，UI/README 改名为 **“关卡缩略图”**。
+  - 新增配置 `[Teleport] LevelThumbnails = true`；
+  - 读取旧 `PortalThumbnails` 作为回退值，避免升级后丢失用户设置；
+  - 关闭时只作为性能/兼容选项，退回紫色标记；默认使用游戏缩略图。
 
 ## 5. 性能
 
@@ -214,34 +251,37 @@ src/GameArt/
 3. **玩家**：带眼睛/嘴巴/朝向；翻转与 eye offset 正确；箱子/墙不画脸。
 4. **∞/ε**：
    - ε 使用 `InfParticleOutlineTex`，∞ 使用 `InfParticleTex`；
-   - 单个符号 0.9 cell；多个符号按 `1.8×/堆叠/间距` 公式；
+   - 单个符号 0.9 cell；多个符号按 `1.8×/堆叠/间距` 公式缩小并纵向排列；
    - 透明度随 cell/screen 高度变化；多重无限符号数量正确；
+   - 不自行换行/缩放/裁到格子；可见符号保持在格内（纹理透明边距）；
    - 与游戏内同位置截图并排对照，布局/透明度可辨认一致。
-5. **菜单**：标题为“进入∞/ε”；条目 `ε #n`/`∞ #n`；未生成项二次确认；不再出现“进入无限区”/“新建”。
-6. **删除项**：无“关卡配色”按钮/配置；箱子下方无 `F/C/I/O...` 徽标；标题栏悬停仍显示属性文字。
-7. v2 交互不回归：点击箱子进入、点击空格传送、树折叠/水平滚动/宽度调节、暂停 F8、Undo/Redo、F7 白化。
-8. `dotnet build -c Release` 0 warning / 0 error；不启动游戏做实机验证（按用户要求）时，至少完成代码对照审查。
+5. **空格/背景**：空格不再固定深灰；底色随该层出口块的游戏背景色变化；箱子内部空格与子层背景一致。
+6. **菜单**：标题为“进入∞/ε”；条目 `ε #n`/`∞ #n`；未生成项二次确认；不再出现“进入无限区”/“新建”。
+7. **删除/保留项**：无“关卡配色”按钮/配置；箱子下方无 `F/C/I/O...` 徽标；“关卡缩略图”按钮保留、默认开启。
+8. v2 交互不回归：点击箱子进入、点击空格传送、树折叠/水平滚动/宽度调节、暂停 F8、Undo/Redo、F7 白化。
+9. `dotnet build -c Release` 0 warning / 0 error；不启动游戏做实机验证（按用户要求）时，至少完成代码对照审查。
 
-## 7. 风险与待确认
+## 7. 风险
 
-1. **“直接使用游戏绘制”的实现方式**：本规格选择“复用游戏纹理 + 复刻 `Draw` 公式”的 `GameArt` 模块，而不是直接调用游戏 `DrawBlocks` 队列（后者依赖全局绘制状态/队列，难以在 IMGUI 面板中安全复用）。如果你要求必须调用原函数，需要进一步设计离屏渲染管线。
-2. **递归箱子内容**：原版 `DrawBlocks` 的嵌套变换较复杂；规格采用 `GoOutOneLevel` 等价变换 + 深度上限。极端 `iii`/InfZone/FilledWithWalls 关卡可能需要专门分支。
-3. **传送门缩略图开关**：保留（默认开）还是删除，待确认。
-4. **符号字体/纹理**：使用游戏纹理（非字体），因此不受 UI 字体缺字影响；但纹理字段是私有的，需反射，缺失时退化。
-5. **性能**：深层箱子/超大关卡可能掉帧；深度/像素阈值是保护措施。
+1. **实现方式**：本规格选择“复用游戏纹理 + 复刻 `Draw` 公式”的 `GameArt` 模块，而不是直接调用游戏 `DrawBlocks` 队列（原因见 §4.0）。若坚持必须调用原函数，需要另立离屏渲染子项目并承担更高验证成本。
+2. **递归箱子内容**：原版 `DrawBlocks` 的嵌套变换较复杂；规格采用 `GoOutOneLevel` 等价变换 + 深度上限 4。极端 `iii`/InfZone/FilledWithWalls 关卡可能需要专门分支。
+3. **符号纹理/透明度**：使用游戏纹理（非字体），不受 UI 字体缺字影响；但纹理字段私有，需反射，缺失时退化。绘制矩形略大于单元格属于原公式，靠纹理透明边距保持可见符号在格内，不要手动裁剪。
+4. **性能**：深层箱子/超大关卡可能掉帧；深度/像素阈值是保护措施。
+
+无其它待确认项；递归深度 4、关卡缩略图默认开启且改名，均已确认。
 
 ## 8. 预计改动文件（批准后才动手）
 
 - 新增 `src/GameArt/`：`TextureBank`、`ColorMath`、`WallArt`、`BoxArt`、`FaceArt`、`InfSymbolArt`、`FloorArt`、`RenderContext`。
-- `src/TeleportOverlay.cs`：地图渲染改为 `GameArt`；删除徽标/配色按钮；菜单改 `进入∞/ε`。
-- `src/ModConfig.cs`：删除 `UseLevelPalette`；决定是否保留 `PortalThumbnails`。
-- `src/UiText.cs`：`进入∞/ε`、`ε`/`∞` 文案。
+- `src/TeleportOverlay.cs`：地图渲染改为 `GameArt`；删除徽标/配色按钮；菜单改 `进入∞/ε`；“关卡缩略图”默认开启。
+- `src/ModConfig.cs`：删除 `UseLevelPalette`；新增 `LevelThumbnails = true`，旧 `PortalThumbnails` 作为回退。
+- `src/UiText.cs`：`进入∞/ε`、`ε`/`∞`、`关卡缩略图` 文案。
 - `README.md` / 本规格：说明 v3 视觉与限制。
 
 ## 9. 测试策略
 
 - 构建：`dotnet build -c Release`，0 warning / 0 error。
 - 代码对照：逐项对照 `_decomp/Draw.cs` 的 `DrawInfEffect`、`DrawWall`、`DrawBlock`、`DrawFace`、`DrawOrEnqueueFloor`、`GoOutOneLevel`。
-- 视觉验收：同位置游戏截图 vs 地图截图并排；重点墙、嵌套箱子、玩家脸、多重 ∞/ε。
-- 交互回归：v2 验收清单。
+- 视觉验收：同位置游戏截图 vs 地图截图并排；重点墙、嵌套箱子、玩家脸、空格背景、多重 ∞/ε。
+- 交互回归：v2 验收清单；“关卡缩略图”开启/关闭。
 - 本轮不实施 v3；只写规格，等待批准后再排实施计划。
