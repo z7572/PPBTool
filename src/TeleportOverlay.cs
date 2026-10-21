@@ -2214,7 +2214,7 @@ namespace PPBTool
                 return;
             }
 
-            float t = (block.MiscAnimT * 0.5f) % 1.3f;
+            float t = Mathf.Repeat(block.MiscAnimT * 0.5f + Time.unscaledTime * 0.35f, 1f);
             if (t >= 1f)
             {
                 return;
