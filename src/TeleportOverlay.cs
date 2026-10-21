@@ -490,14 +490,51 @@ namespace PPBTool
                 return false;
             }
 
-            if (node.Level.InfZone)
+            Level voidLevel = null;
+            LevelNode current = node;
+            while (current != null)
+            {
+                if (current.Level != null && current.Level.InfZone)
+                {
+                    voidLevel = current.Level;
+                    break;
+                }
+
+                current = current.ParentNode;
+            }
+
+            if (voidLevel == null
+                && node.ParentBlock != null
+                && node.ParentBlock.OuterLevel != null
+                && node.ParentBlock.OuterLevel.InfZone)
+            {
+                voidLevel = node.ParentBlock.OuterLevel;
+            }
+
+            return voidLevel != null && !IsVoidVisibleInGame(voidLevel);
+        }
+
+        private static bool IsVoidVisibleInGame(Level voidLevel)
+        {
+            if (voidLevel == null || voidLevel.FilledWithWalls)
+            {
+                return false;
+            }
+
+            Block player = GameState.Player;
+            if (player != null && player.OuterLevel == voidLevel)
             {
                 return true;
             }
 
-            return node.ParentBlock != null
-                && node.ParentBlock.OuterLevel != null
-                && node.ParentBlock.OuterLevel.InfZone;
+            // Matches Draw.DrawBlocks: void levels are drawn only while the player is
+            // in infinity space and the void contains more than its owner block.
+            if (!World.WentToInfZone)
+            {
+                return false;
+            }
+
+            return voidLevel.blockList != null && voidLevel.blockList.Count > 1;
         }
 
         private void NavigateToNode(LevelNode node)

@@ -46,7 +46,8 @@ namespace PPBTool
 
             hideVoidBoxes = config.Bind(
                 "Teleport", "HideVoidBoxes", false,
-                "Hide boxes/levels that live inside an infinity void.");
+                "Hide void levels/boxes that are not game-visible. Voids the game is " +
+                "currently drawing (player/box in infinity space) stay visible.");
 
             ConfigEntry<bool> legacyThumbnails = config.Bind(
                 "Teleport", "PortalThumbnails", true,

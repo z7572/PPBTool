@@ -37,7 +37,7 @@ Teleport = F8
 CloseAfterTeleport = true
 Undoable = true
 CellSize = 24
-HideVoidBoxes = false      ; 隐藏虚空层/虚空箱
+HideVoidBoxes = false      ; 隐藏游戏当前不可见的虚空层/虚空箱
 LevelThumbnails = true     ; 关卡缩略图（默认开）
                            ; 旧 PortalThumbnails 会作为回退值读取
 
@@ -109,7 +109,7 @@ LogSceneTree = false
 - **原版**：大厅/区域/箱子/嵌套箱子/无限区/传送门/虚空。
 - **CustomHubs**：不硬编码区域名；多顶层 `Block` 根层显示为 `hub #1/#2`；`Ref ... Area_X` 作为区域标题；自定义 puzzle 的 `F7` 仍走 CustomHubs 的存档/回大厅逻辑。
 - 不引用 CustomHubs 程序集，不与其补丁冲突（仅补 `World.UpdateInner`）。
-- 虚空层可正常进入/传送；`隐藏虚空` 只影响显示。
+- 虚空层可正常进入/传送；`隐藏虚空` 只隐藏游戏当前不可见的虚空，玩家/箱子进入过、游戏正在显示的虚空会保留。
 
 ## 已知限制
 
