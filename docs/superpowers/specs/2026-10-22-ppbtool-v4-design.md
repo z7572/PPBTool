@@ -647,18 +647,12 @@ sealed class RenderContext
 
 #### UI
 
-- 工具栏增加 `← 后退` / `→ 前进` 两个按钮（无历史时禁用）。
-- 增加 **导航** 菜单：
-  - `← 后退`（Alt+Left）
-  - `→ 前进`（Alt+Right）
-  - `回到引用处`（Backspace，现有语义）
-  - `回到玩家所在层`
-- 菜单项显示快捷键；中英文：
-  - Back / Forward
-  - Go to Reference
-  - Go to Player
+- 工具栏**直接**增加 `←` / `→` 两个按钮（无历史时禁用），不提供二级导航菜单。
+- `回到引用处` 保持独立按钮；`Backspace` 仍是引用导航。
+- 快捷键：`Alt+Left` / `Alt+Right`；不写游戏 Undo。
 - Tooltip 明确：
   - `后退/前进只改变地图视图，不撤销游戏操作；游戏 Undo/Redo 仍用游戏按键（默认 Z / X，可重绑）。`
+- 引用选择器、无限菜单等模态层必须在 map/tree 输入之前拦截，避免鼠标穿透触发传送；v4 实现给 `HandleMapInput`、树/滚动条/分隔条都加了 ref-menu 守卫。
 
 #### ViewSnapshot
 
@@ -718,7 +712,9 @@ sealed class ViewSnapshot
 - 树点击、箱子点击、传送、引用 chooser 都进入历史；
 - 后退/前进不改变玩家位置、不写 Undo；
 - `Backspace` 仍回引用处，Alt+Left/Right 走视图历史；
-- 无历史时按钮/菜单禁用；
+- 工具栏 `←`/`→` 直接可用，没有二级导航菜单；
+- 引用选择器/Esc 关闭时不会穿透触发地图传送；
+- 无历史时按钮禁用；
 - 场景切换清空历史。
 
 ## 6. 验收标准
@@ -771,9 +767,9 @@ sealed class ViewSnapshot
   - `BuildTags` 拆分 refs/enter/exit；
   - `BuildInfinityCounts` 保留但改名语义。
 - `src/TeleportOverlay.cs`：
-  - `navRefs` stack、`GoBackReference`；
-  - `ViewSnapshot` back/forward 历史、导航菜单/按钮；
-  - `Go to reference…` 列表；
+  - `navRefs` stack、`GoToReference`；
+  - `ViewSnapshot` back/forward 历史、工具栏 `←`/`→` 按钮；
+  - Reference chooser；
   - `ResolveLevelColor`；
   - `DrawInfSymbols` 规则/诊断；
   - 无引用 Back 禁用。

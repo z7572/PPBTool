@@ -128,7 +128,6 @@ namespace PPBTool
         private readonly List<LevelReference> navRefs = new List<LevelReference>();
         private readonly List<LevelReference> refChoices = new List<LevelReference>();
         private bool showRefMenu;
-        private bool showNavMenu;
         private string navScene = string.Empty;
 
         private readonly List<ViewSnapshot> backHistory = new List<ViewSnapshot>();
@@ -283,7 +282,6 @@ namespace PPBTool
             showInfMenu = false;
             showInfConfirm = false;
             showRefMenu = false;
-            showNavMenu = false;
             titleStyle = null;
             RebuildGraph(false);
             if (rows.Count == 0 && hideVoid)
@@ -349,7 +347,6 @@ namespace PPBTool
             showInfMenu = false;
             showInfConfirm = false;
             showRefMenu = false;
-            showNavMenu = false;
             suppressFrames = 2;
             Cursor.visible = cursorWasVisible;
             World.State = savedState == World.WS.Initializing ? World.WS.Playing : savedState;
@@ -749,7 +746,6 @@ namespace PPBTool
                 treeScrollX = snapshot.TreeScrollX;
                 navRefs.Clear();
                 navRefs.AddRange(snapshot.References);
-                showNavMenu = false;
                 showRefMenu = false;
                 showInfMenu = false;
                 showInfConfirm = false;
@@ -931,12 +927,6 @@ namespace PPBTool
 
             if (keyboard.escapeKey.wasPressedThisFrame)
             {
-                if (showNavMenu)
-                {
-                    showNavMenu = false;
-                    return;
-                }
-
                 if (showRefMenu)
                 {
                     showRefMenu = false;
@@ -954,7 +944,7 @@ namespace PPBTool
                 return;
             }
 
-            if (showNavMenu || showRefMenu)
+            if (showRefMenu)
             {
                 return;
             }
@@ -1184,14 +1174,6 @@ namespace PPBTool
             ClampTreeScroll();
         }
 
-        private void ToggleNavMenu()
-        {
-            showNavMenu = !showNavMenu;
-            showRefMenu = false;
-            showInfMenu = false;
-            showInfConfirm = false;
-        }
-
         private void TogglePortalArt()
         {
             portalArt = !portalArt;
@@ -1355,11 +1337,6 @@ namespace PPBTool
             {
                 DrawRefMenu(w, h);
             }
-
-            if (open && showNavMenu)
-            {
-                DrawNavMenu(w, h);
-            }
         }
 
         private void DrawToast()
@@ -1450,7 +1427,8 @@ namespace PPBTool
 
             x = ToolButton(x, y, UiText.Get("back_parent"),
                 CanGoToReference(), false, GoToReference) + 6f;
-            x = ToolButton(x, y, UiText.Get("nav_menu"), true, showNavMenu, ToggleNavMenu) + 8f;
+            x = ToolButton(x, y, "←", backHistory.Count > 0, false, GoBackView) + 4f;
+            x = ToolButton(x, y, "→", forwardHistory.Count > 0, false, GoForwardView) + 8f;
             Fill(new Rect(x - 4f, y + 2f, 1f, 24f), Edge);
 
             x = ToolButton(x, y, UiText.Get("inf_enter"), selectedNode != null, false,
@@ -1477,7 +1455,7 @@ namespace PPBTool
             float width = buttonStyle.CalcSize(new GUIContent(text)).x + 16f;
             var rect = new Rect(x, y, width, 30f);
             bool old = GUI.enabled;
-            GUI.enabled = enabled && !showInfMenu && !showInfConfirm && !showRefMenu && !showNavMenu;
+            GUI.enabled = enabled && !showInfMenu && !showInfConfirm && !showRefMenu;
             if (GUI.Button(rect, text, on ? buttonOnStyle : buttonStyle))
             {
                 action();
@@ -1561,7 +1539,7 @@ namespace PPBTool
                     Fill(row, new Color(0.15f, 0.17f, 0.21f, 1f));
                 }
 
-                bool treeInput = !showInfMenu && !showInfConfirm;
+                bool treeInput = !showInfMenu && !showInfConfirm && !showRefMenu;
                 if (node.Children.Count > 0)
                 {
                     float arrowX = 4f + node.Depth * 13f - treeScrollX;
@@ -1646,7 +1624,7 @@ namespace PPBTool
             DrawTextureTinted(thumb, texThumb, Color.white);
 
             Event e = Event.current;
-            if (e == null || showInfMenu || showInfConfirm)
+            if (e == null || showInfMenu || showInfConfirm || showRefMenu)
             {
                 return;
             }
@@ -1693,7 +1671,7 @@ namespace PPBTool
             DrawTextureTinted(thumb, texThumb, Color.white);
 
             Event e = Event.current;
-            if (e == null || showInfMenu || showInfConfirm)
+            if (e == null || showInfMenu || showInfConfirm || showRefMenu)
             {
                 return;
             }
@@ -1730,7 +1708,7 @@ namespace PPBTool
 
         private void HandleSplitter(Rect splitter, float screenWidth)
         {
-            if (showInfMenu || showInfConfirm)
+            if (showInfMenu || showInfConfirm || showRefMenu)
             {
                 return;
             }
@@ -1852,7 +1830,7 @@ namespace PPBTool
             float originY = Mathf.Round(canvas.center.y - gridH * 0.5f + pan.y);
             lastGrid = new Rect(originX, originY, gridW, gridH);
 
-            if (!showInfMenu && !showInfConfirm)
+            if (!showInfMenu && !showInfConfirm && !showRefMenu)
             {
                 HandleMapInput(canvas, level, originX, originY, cell);
             }
@@ -3481,71 +3459,6 @@ namespace PPBTool
         }
 
         // -------------------------------------------------------------- inf popup
-
-        private void DrawNavMenu(float w, float h)
-        {
-            float panelW = 520f;
-            float panelH = 90f + 4f * 34f;
-            var panel = new Rect((w - panelW) * 0.5f, (h - panelH) * 0.5f, panelW, panelH);
-            var closeRect = new Rect(panel.xMax - 90f, panel.yMax - 38f, 74f, 28f);
-            var itemRects = new List<Rect>();
-            for (int i = 0; i < 4; i++)
-            {
-                itemRects.Add(new Rect(panel.x + 16f, panel.y + 44f + i * 34f, panel.width - 32f, 28f));
-            }
-
-            Event e = Event.current;
-            Vector2 mouse = e != null ? e.mousePosition : Vector2.zero;
-            if (GUI.Button(new Rect(0f, 0f, w, h), GUIContent.none, catchStyle))
-            {
-                if (!panel.Contains(mouse))
-                {
-                    showNavMenu = false;
-                    return;
-                }
-
-                for (int i = 0; i < itemRects.Count; i++)
-                {
-                    if (!itemRects[i].Contains(mouse))
-                    {
-                        continue;
-                    }
-
-                    showNavMenu = false;
-                    switch (i)
-                    {
-                        case 0: GoBackView(); break;
-                        case 1: GoForwardView(); break;
-                        case 2: GoToReference(); break;
-                        case 3: GoToPlayerView(); break;
-                    }
-
-                    return;
-                }
-
-                if (closeRect.Contains(mouse))
-                {
-                    showNavMenu = false;
-                }
-
-                return;
-            }
-
-            Fill(new Rect(0f, 0f, w, h), new Color(0f, 0f, 0f, 0.45f));
-            Fill(panel, Header);
-            Border(panel, Edge, 1f);
-            GUI.Label(new Rect(panel.x + 16f, panel.y + 10f, panel.width - 32f, 26f),
-                UiText.Get("nav_menu"), titleStyle);
-            DrawMenuButton(itemRects[0],
-                UiText.Get("back_view") + " (" + backHistory.Count + ")  Alt+Left",
-                itemRects[0].Contains(mouse));
-            DrawMenuButton(itemRects[1],
-                UiText.Get("forward_view") + " (" + forwardHistory.Count + ")  Alt+Right",
-                itemRects[1].Contains(mouse));
-            DrawMenuButton(itemRects[2], UiText.Get("back_parent"), itemRects[2].Contains(mouse));
-            DrawMenuButton(itemRects[3], UiText.Get("go_to_player"), itemRects[3].Contains(mouse));
-            DrawMenuButton(closeRect, UiText.Get("close"), closeRect.Contains(mouse));
-        }
 
         private void DrawRefMenu(float w, float h)
         {
