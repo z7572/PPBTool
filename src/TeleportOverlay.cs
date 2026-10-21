@@ -2941,9 +2941,7 @@ namespace PPBTool
             }
 
             return !level.FilledWithWalls
-                && World.WentToInfZone
-                && level.blockList != null
-                && level.blockList.Count > 1;
+                && World.WentToInfZone;
         }
 
         private void LogInfSymbol(Block block, bool enter, int count, int depth, bool rendered)
@@ -2961,6 +2959,7 @@ namespace PPBTool
                 + " infZone=" + (parent != null && parent.InfZone)
                 + " count=" + count
                 + " depth=" + depth
+                + " parentBlocks=" + (parent != null && parent.blockList != null ? parent.blockList.Count : 0)
                 + " style=" + Draw.DrawStyle
                 + " wentToInfZone=" + World.WentToInfZone
                 + " rendered=" + rendered);
