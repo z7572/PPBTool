@@ -637,6 +637,90 @@ sealed class RenderContext
 - Back/引用 chooser 仍能回到实际 entry；
 - 无限缩放仅放大 cycle 标记，不递归展开。
 
+### 5.9 导航历史：后退 / 前进
+
+**这是“视图历史”，不是游戏 Undo/Redo。**
+
+- “回到引用处”解决“当前层被谁包含”；
+- “后退/前进”解决“我刚才看过哪些层级/位置”；
+- 两者可以同时存在，互不替代。
+
+#### UI
+
+- 工具栏增加 `← 后退` / `→ 前进` 两个按钮（无历史时禁用）。
+- 增加 **导航** 菜单：
+  - `← 后退`（Alt+Left）
+  - `→ 前进`（Alt+Right）
+  - `回到引用处`（Backspace，现有语义）
+  - `回到玩家所在层`
+- 菜单项显示快捷键；中英文：
+  - Back / Forward
+  - Go to Reference
+  - Go to Player
+- Tooltip 明确：
+  - `后退/前进只改变地图视图，不撤销游戏操作；游戏 Undo 仍用 Ctrl+Z。`
+
+#### ViewSnapshot
+
+```csharp
+sealed class ViewSnapshot
+{
+    Level Level;
+    int CursorX, CursorY;
+    float Zoom;
+    Vector2 Pan;
+    Block ColorOwner;          // clone 入口颜色上下文
+    float TreeScroll, TreeScrollX;
+    List<LevelReference> RefStack; // 引用导航栈快照
+    bool HideVoid;
+}
+```
+
+- 只记录**用户主动导航**前的状态：点击箱子、树节点、Reference chooser、无限链接、传送、回到引用处。
+- 不记录每帧 pan/zoom；在离开当前视图时把当时的 zoom/pan/cursor 一并存入 snapshot。
+- 同一 Level 内连续树点击可合并（例如 350ms 内），避免历史爆炸。
+- 容量 64；超过丢弃最旧。
+
+#### 语义
+
+- 新导航前：
+  ```csharp
+  back.Push(currentSnapshot);
+  forward.Clear();
+  ```
+- `GoBack()`：
+  - 取 `back.Pop()`；
+  - 把当前状态 push 到 `forward`；
+  - 恢复 snapshot（不触发新历史）。
+- `GoForward()`：对称。
+- 恢复 snapshot 时：
+  - 若 `Level` 已不在 `World.levels`，跳过并提示；
+  - 恢复 `RefStack`/`ColorOwner`，所以“回到引用处”仍按当时的引用路径工作；
+  - 不修改玩家位置/游戏状态，不是传送。
+- 场景切换/读档：清空 back/forward。
+- 传送：
+  - 传送前记录 snapshot；
+  - 传送后可以后退查看旧视图，但不会撤销传送；要撤销传送用 `Ctrl+Z`。
+- 关闭地图不丢历史；重新打开保留（同一场景）。
+- `前进` 在新导航后清空；与浏览器一致。
+
+#### 与引用导航的关系
+
+- `Backspace`/`回到引用处` 是**引用语义**：去 `BlocksWithThisAsTheirSubLevel` 的某个引用位置。
+- `Alt+Left`/`后退` 是**历史语义**：回到上一个看过的视图（可能是引用、树、传送、任意层级）。
+- 两者都会 push 历史（除非是历史恢复本身）。
+- 循环 A→B→A：引用栈和视图历史分别推进；不会因为循环而无限增长，受 64 容量限制。
+
+#### 验收
+
+- 访问 A→B→C 后连续后退到 A，再前进到 C；
+- 后退后做新导航，前进栈清空；
+- 树点击、箱子点击、传送、引用 chooser 都进入历史；
+- 后退/前进不改变玩家位置、不写 Undo；
+- `Backspace` 仍回引用处，Alt+Left/Right 走视图历史；
+- 无历史时按钮/菜单禁用；
+- 场景切换清空历史。
+
 ## 6. 验收标准
 
 1. **引用/Back**：
@@ -660,7 +744,13 @@ sealed class RenderContext
    - 多重符号数量/alpha/堆叠一致；
    - 虚空父层只在虚空可见时画；
    - 不因纹理缺失画 fallback 文本。
-5. v3 功能不回归；构建 0/0。
+5. **导航历史**：
+   - `← 后退` / `→ 前进` 菜单项和工具栏按钮可用；
+   - A→B→C 可后退到 A、再前进到 C；
+   - 后退后新导航会清空前进栈；
+   - 后退/前进不改变玩家位置、不写 Undo；
+   - Backspace 仍是“回到引用处”，Alt+Left/Right 才是视图历史。
+6. v3 功能不回归；构建 0/0。
 
 ## 7. 待实机确认 / 风险
 
@@ -671,6 +761,7 @@ sealed class RenderContext
 5. **Void 引用的 Back**：即使虚空当前被 `隐藏虚空` 过滤，Back 也要能导航过去并自动恢复显示；需实机确认虚空加载/层级节点存在。
 6. **重叠引用**：CustomHubs/自定义关卡可能在同一格 Init 多个箱子；需要实机确认 `blockList` 只含 grid occupant、隐藏出口仍可退出，以及 `GetExitBlock` 是哪个。
 7. **无引用背景 fallback** 的颜色优先级需要实机确认；先用 block → palette.root → neutral。
+8. **导航历史**：需要确认后退到旧视图时，旧 Level 是否仍在 `World.levels`；传送后后退只恢复视图，不撤销传送，UI 需明确提示。
 
 ## 8. 预计改动（批准后）
 
@@ -681,6 +772,7 @@ sealed class RenderContext
   - `BuildInfinityCounts` 保留但改名语义。
 - `src/TeleportOverlay.cs`：
   - `navRefs` stack、`GoBackReference`；
+  - `ViewSnapshot` back/forward 历史、导航菜单/按钮；
   - `Go to reference…` 列表；
   - `ResolveLevelColor`；
   - `DrawInfSymbols` 规则/诊断；
@@ -698,6 +790,7 @@ sealed class RenderContext
   3. 无引用层背景；
   4. 二重无限进入箱子（enter ×2）；
   5. hub 无限符号：游戏 GRID/TUI 各样式对照；
-  6. 虚空可见/隐藏前后的符号。
+  6. 导航历史前进/后退、后退后新导航清空前进；
+7. 虚空可见/隐藏前后的符号。
 - 日志：`LogInfSymbols=true`，对比游戏截图和 dump。
 - 本轮只写规格，未实施。
