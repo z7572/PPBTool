@@ -121,6 +121,7 @@ namespace PPBTool
         private int suppressFrames;
         private World.WS savedState;
         private LevelNode selectedNode;
+        private Block selectedColorOwner;
         private bool hideVoid;
         private bool portalArt;
         private int cursorX;
@@ -231,6 +232,7 @@ namespace PPBTool
 
             UiText.Refresh();
             portalCache.Clear();
+            selectedColorOwner = null;
             lastCanvas = default(Rect);
             lastGrid = default(Rect);
             savedState = World.State;
@@ -514,6 +516,7 @@ namespace PPBTool
 
             FlattenTree();
             selectedNode = node;
+            selectedColorOwner = null;
             zoom = 1f;
             pan = Vector2.zero;
             PlaceCursorAtDefault(node);
@@ -759,7 +762,13 @@ namespace PPBTool
             Block block = level.blocks[x, y];
             if (block != null && block.SubLevel != null)
             {
+                Block colorOwner = block;
                 NavigateToLevel(block.SubLevel);
+                if (selectedNode != null && selectedNode.Level == block.SubLevel)
+                {
+                    selectedColorOwner = colorOwner;
+                }
+
                 return;
             }
 
@@ -1489,12 +1498,25 @@ namespace PPBTool
 
             GUI.BeginGroup(canvas);
             Block levelOwner = LevelGraph.ExitBlockOf(level);
-            if (levelOwner != null && levelOwner.OuterLevel != null)
+            Block visualOwner = selectedColorOwner != null && selectedColorOwner.SubLevel == level
+                ? selectedColorOwner
+                : levelOwner;
+            if (visualOwner != null)
             {
-                Color levelBg = GameBlockColor(
-                    levelOwner, Mathf.Max(24, Mathf.RoundToInt(Mathf.Min(gridW, gridH))));
-                Fill(new Rect(localX, localY, gridW, gridH), levelBg);
-                DrawLevelGrid(level, levelOwner, localX, localY, cell, gridW, gridH);
+                if (visualOwner.OuterLevel != null)
+                {
+                    Color levelBg = GameBlockColor(
+                        visualOwner, Mathf.Max(24, Mathf.RoundToInt(Mathf.Min(gridW, gridH))));
+                    Fill(new Rect(localX, localY, gridW, gridH), levelBg);
+                    DrawLevelGrid(level, visualOwner, localX, localY, cell, gridW, gridH);
+                }
+
+                if (World.InHub())
+                {
+                    GUI.BeginGroup(new Rect(localX, localY, gridW, gridH));
+                    DrawHubLines(level, visualOwner, cell, cell, false);
+                    GUI.EndGroup();
+                }
             }
 
             for (int row = firstRow; row <= lastRow; row++)
@@ -1508,7 +1530,7 @@ namespace PPBTool
                         continue;
                     }
 
-                    DrawRealCell(level, x, y, r, cell, 0, levelOwner);
+                    DrawRealCell(level, x, y, r, cell, 0, visualOwner);
                 }
             }
 
@@ -1860,6 +1882,13 @@ namespace PPBTool
 
             if (sub != null && cell >= 14f && depth < 4)
             {
+                if (World.InHub())
+                {
+                    GUI.BeginGroup(r);
+                    DrawHubLines(sub, block, r.width / sub.width, r.height / sub.height, block.FlipH);
+                    GUI.EndGroup();
+                }
+
                 DrawBoxContents(r, block, sub, cell, depth);
             }
             else if (sub != null)
@@ -1912,6 +1941,133 @@ namespace PPBTool
             }
         }
 
+        private void DrawHubLines(Level level, Block owner, float cw, float ch, bool flipH)
+        {
+            if (!World.InHub() || owner == null || level == null || level.floorList == null)
+            {
+                return;
+            }
+
+            float fraction = (cw + ch) * 0.5f / Mathf.Max(1f, Screen.height);
+            Color active = HubLineColor(owner, true, fraction);
+            Color inactive = HubLineColor(owner, false, fraction);
+
+            foreach (Floor floor in level.floorList)
+            {
+                if (floor == null || floor.Type != Floor.FloorType.LevelPortal
+                    || floor.UnlockLines == null || floor.UnlockLines.Length == 0)
+                {
+                    continue;
+                }
+
+                float childX = (floor.xpos + 0.5f) * cw;
+                if (flipH)
+                {
+                    childX = (level.width - 1 - floor.xpos + 0.5f) * cw;
+                }
+
+                float childY = (level.height - 1 - floor.ypos + 0.5f) * ch;
+                foreach (Floor.UnlockLine line in floor.UnlockLines)
+                {
+                    float sx = childX;
+                    float sy = childY;
+                    if (line.finishToReception)
+                    {
+                        sx += cw * 3f;
+                        sy += cw * 2f;
+                    }
+
+                    float ex = sx + line.dx * cw;
+                    float ey = sy - line.dy * ch;
+                    if (line.lastPortal)
+                    {
+                        ex -= cw * 0.57f;
+                    }
+
+                    if (line.finishToReception)
+                    {
+                        sx += cw * 0.57f;
+                    }
+
+                    Color color = line.lit ? active : inactive;
+                    int thickness = (int)(cw * (line.thick ? 0.32f : 0.12f));
+                    if (thickness < 1)
+                    {
+                        thickness = 1;
+                    }
+
+                    int sm = thickness / 2;
+                    int sp = thickness - sm;
+                    switch (line.shape)
+                    {
+                        case Floor.LS.Straight:
+                            DrawHubLine(sx, sy, ex, ey, sm, sp, color);
+                            break;
+                        case Floor.LS.HorizFirstL:
+                            DrawHubLine(sx, sy, ex, sy, sm, sp, color);
+                            DrawHubLine(ex, sy, ex, ey, sm, sp, color);
+                            break;
+                        case Floor.LS.VertFirstL:
+                            DrawHubLine(sx, sy, sx, ey, sm, sp, color);
+                            DrawHubLine(sx, ey, ex, ey, sm, sp, color);
+                            break;
+                        case Floor.LS.HorizFirstS:
+                        {
+                            float midX = sx + Mathf.Sign(line.dx) * cw;
+                            DrawHubLine(sx, sy, midX, sy, sm, sp, color);
+                            DrawHubLine(midX, ey, ex, ey, sm, sp, color);
+                            if (line.dy != 0)
+                            {
+                                DrawHubLine(midX, sy, midX, ey, sm, sp, color);
+                            }
+
+                            break;
+                        }
+                        case Floor.LS.VertFirstS:
+                        {
+                            float midY = sy - Mathf.Sign(line.dy) * ch;
+                            DrawHubLine(sx, sy, sx, midY, sm, sp, color);
+                            DrawHubLine(ex, midY, ex, ey, sm, sp, color);
+                            if (line.dx != 0)
+                            {
+                                DrawHubLine(sx, midY, ex, midY, sm, sp, color);
+                            }
+
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        private void DrawHubLine(
+            float x1, float y1, float x2, float y2, int sm, int sp, Color color)
+        {
+            float x = Mathf.Min(x1, x2) - sm;
+            float y = Mathf.Min(y1, y2) - sm;
+            float w = Mathf.Abs(x2 - x1) + sm + sp;
+            float h = Mathf.Abs(y2 - y1) + sm + sp;
+            Fill(new Rect(x, y, Mathf.Max(1f, w), Mathf.Max(1f, h)), color);
+        }
+
+        private Color HubLineColor(Block block, bool active, float fraction)
+        {
+            float val = Mathf.Max(block.val, 0.4f);
+            val *= -0.4f * Mathf.Log(Mathf.Max(fraction, 0.0001f), 20f) + 0.8f;
+            float sat = block.sat;
+            if (active)
+            {
+                sat *= 0.85f;
+                val *= 0.9f;
+            }
+            else
+            {
+                val *= 0.25f;
+            }
+
+            return Hsv(block.hue, sat, val);
+        }
+
         private void DrawBoxGrid(Rect r, Block block, Level sub)
         {            float boxAvg = (r.width + r.height) * 0.5f;
             float subAvg = (sub.width + sub.height) * 0.5f;
@@ -1942,8 +2098,7 @@ namespace PPBTool
         }
 
         private void DrawBoxContents(Rect r, Block block, Level sub, int cell, int depth)
-        {
-            // The game draws the sublevel across the whole box; the border is painted
+        {            // The game draws the sublevel across the whole box; the border is painted
             // afterwards on top and does not consume content space.
             Rect inner = r;
             if (inner.width < 4f || inner.height < 4f || sub.width <= 0 || sub.height <= 0)
@@ -2320,6 +2475,7 @@ namespace PPBTool
             float fraction = cell / Mathf.Max(1f, Screen.height);
             float val = owner.val * WallBrightness(fraction) * 2f * 1.10f;
             float sat = owner.sat;
+            bool clone = false;
             if (owner.IsSomeInfExitBlock)
             {
                 val *= 0.55f;
@@ -2328,10 +2484,19 @@ namespace PPBTool
             {
                 val += 0.4f;
                 sat *= 0.82f;
+                clone = true;
             }
 
             val = Mathf.Clamp(val, 0.22f, 1f);
-            return Hsv(owner.hue, sat, val);
+            Color color = Hsv(owner.hue, sat, val);
+            if (clone)
+            {
+                // Clone walls must read brighter even when val has already saturated
+                // at 1 (small nested cells).
+                color = Color.Lerp(color, Color.white, 0.22f);
+            }
+
+            return color;
         }
 
         private Color GameBlockColor(Block block, int cell)
