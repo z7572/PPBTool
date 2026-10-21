@@ -658,7 +658,7 @@ sealed class RenderContext
   - Go to Reference
   - Go to Player
 - Tooltip 明确：
-  - `后退/前进只改变地图视图，不撤销游戏操作；游戏 Undo 仍用 Ctrl+Z。`
+  - `后退/前进只改变地图视图，不撤销游戏操作；游戏 Undo/Redo 仍用游戏按键（默认 Z / X，可重绑）。`
 
 #### ViewSnapshot
 
@@ -700,7 +700,7 @@ sealed class ViewSnapshot
 - 场景切换/读档：清空 back/forward。
 - 传送：
   - 传送前记录 snapshot；
-  - 传送后可以后退查看旧视图，但不会撤销传送；要撤销传送用 `Ctrl+Z`。
+  - 传送后可以后退查看旧视图，但不会撤销传送；要撤销传送用游戏内 Undo（默认 `Z`，可重绑）。
 - 关闭地图不丢历史；重新打开保留（同一场景）。
 - `前进` 在新导航后清空；与浏览器一致。
 

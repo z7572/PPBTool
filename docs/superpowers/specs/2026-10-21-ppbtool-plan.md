@@ -57,7 +57,7 @@
   `RegisterMove` → `Movement.MoveBlock` → 状态修复 → `World.MoveCount++` → `TurnCompletedDontPerform()`。
 - `Undoable==false` 时改为 `UndoManager.Clear()` + 直接 `MoveBlock`（不登记 Turn）。
 
-验证：传送后 `Ctrl+Z` 回原位，`Ctrl+Y` 再传送；箱子内外互传后撤销层级正确。
+验证：传送后游戏内 Undo（默认 `Z`）回原位，Redo（默认 `X`）再传送；箱子内外互传后撤销层级正确。
 
 ## 任务 5：覆盖层 UI（TeleportOverlay）
 

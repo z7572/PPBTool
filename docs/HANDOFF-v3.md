@@ -30,7 +30,7 @@ v3 功能已全部落地，最近提交：
 
 - `F7` 一键通关：设置 `World.Winning/WinCount=0`，播放约 1.5 秒原版白化/发白动画，再正常存档/解锁/下一关。
 - `F8` 全屏层级浏览器。
-- 传送登记为游戏原生 `UndoManager.Turn`，`Ctrl+Z/Ctrl+Y` 与游戏 Undo 一致。
+- 传送登记为游戏原生 `UndoManager.Turn`，游戏内 Undo/Redo（默认 `Z` / `X`，可重绑）与游戏一致。
 - 兼容 CustomHubs（不引用其程序集，仅 Harmony patch `World.UpdateInner`）。
 
 ### 层级树
