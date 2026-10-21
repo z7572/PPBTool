@@ -63,6 +63,10 @@
       <HintPath>$(ManagedDir)\Unity.InputSystem.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="netstandard">
+      <HintPath>$(ManagedDir)\netstandard.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="BepInEx">
       <HintPath>$(BepInExCoreDir)\BepInEx.dll</HintPath>
       <Private>false</Private>

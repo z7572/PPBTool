@@ -56,6 +56,10 @@ CloseAfterTeleport = true
 Undoable = true
 # 地图默认格子像素大小
 CellSize = 24
+
+[Diagnostics]
+# 打开地图时把层级树写入日志（默认关闭）
+LogSceneTree = false
 ```
 
 热键使用 Unity Input System 的 `Key` 枚举解析（`F7`、`F8`、`F9`…），解析失败时回退默认值并写日志。
@@ -94,10 +98,14 @@ CustomHubs 下同样成立：`currentLevelName` 是 puzzle 名，`SaveFile` 已�
 **可传送目标**（智能点选的核心）：
 
 - 空格且非（未解锁）传送门 → 直接落点。
-- 格子是箱子（`SubLevel != null`）→ 视为「进入这个箱子」，目标 = 箱子子层里离入口块最近的空格。
-- 箱子套箱子：递归下钻到最内层，落点同样取最内层入口附近的空格。
-- 墙/玩家/无法下钻的箱子 → 不出现在目标列表里（地图上仍会绘制，但点击无效并提示）。
-- 目标格若被占用（极端情况：入口块本身不是空格），用 BFS 在子层内找最近的空格，保证落点一定合法。
+- 格子是箱子（`SubLevel != null`）→ 视为「进入这个箱子」，目标 = **箱子子层内部**离中心最近的空格。
+  注意：`Level.GetExitBlock()` 返回的是父层里拥有该子层的箱子块，它的坐标属于父层，不能当作子层内部坐标。
+- 箱子套箱子：不自动下钻；用户在左栏选中对应子层后可直接点选内部格子（层级树包含所有嵌套层）。
+- 墙/玩家/无法落点的箱子 → 不出现在目标列表里（地图上仍会绘制，但点击无效并提示）。
+- 落点若被占用（极端情况），用 BFS 在子层内找最近的空格，保证落点一定合法。
+
+**翻转处理**：玩家/摄像机的水平翻转由「从根层到目标层的所有箱子 `FlipH` 的异或」决定。
+传送时只应用「当前层路径」与「目标层路径」的异或差，因此普通层间传送不会误翻转。
 
 **界面布局**（全屏，IMGUI，缩放自适应 1280×720 以上）：
 
@@ -126,14 +134,18 @@ CustomHubs 下同样成立：`currentLevelName` 是 puzzle 名，`SaveFile` 已�
 **传送执行**（顺序固定，任何一步失败都回滚并提示）：
 
 1. 若 `World.AnyBlockMoving || World.Transitioning`，先 `UndoManager.StopAnimations()`、清空各层 `phantoms`；
-2. 冲掉可能存在的半截 Turn：`UndoManager.TurnCompletedDontPerform()`（仅当 `CurrentTurn.moves.Count>0`）；
-3. 记录 `fromLevel/fromX/fromY/fromFlipH`，构造 `UndoManager.Move`，`Nudge=true`，
+   多人队列未消化时先 `World.DoNextMultiPlayerImpulse()`。
+2. 计算翻转差 `flipDelta = PathFlip(当前层) ^ PathFlip(目标层)`。
+3. 冲掉可能存在的半截 Turn：`UndoManager.TurnCompletedDontPerform()`（仅当 `CurrentTurn.moves.Count>0`）；
+4. 记录 `fromLevel/fromX/fromY/fromFlipH`，构造 `UndoManager.Move`，`Nudge=true`，
    `RegisterMove`，然后 `Movement.MoveBlock(block, toLevel, toX, toY)`；
-4. `World.ComputeBlockLists()`、`Draw.ResetCameraOffset()`、眼睛偏移清零、
+   `player.FlipH = fromFlipH ^ flipDelta`，`Draw.FlipH ^= flipDelta`；
+5. `World.ComputeBlockLists()`、`Draw.ResetCameraOffset()`、眼睛偏移清零、
    `World.UpdateButtonsPressed()`、`World.UpdateCoveringButtonSounds(false)`、
    `Movement.DetectInfExitPreviews(block)`；
-5. `World.MoveCount++`、`TurnCompletedDontPerform()` → 传送成为独立可撤销的一步；
-6. 关闭覆盖层，恢复 `State`。
+6. `World.MoveCount++`、`TurnCompletedDontPerform()` → 传送成为独立可撤销的一步；
+7. 关闭覆盖层，恢复 `State`；并**吞掉关闭用的那一帧输入**（`BlocksGameUpdate` 额外保持 2 帧），
+   避免 `Esc` 关闭后立刻弹出游戏暂停菜单、或左键关闭时触发游戏内按钮。
 
 这条路径与 `FastTravel.Update` 的做法一致，因此不会与撤销功能冲突：
 `Undo` 调 `DoUndo` → `MoveBlock` 回 `fromLevel`；`Redo` 走 `DoRedo` 回到目标层。
@@ -143,10 +155,11 @@ CustomHubs 下同样成立：`currentLevelName` 是 puzzle 名，`SaveFile` 已�
 ```
 PPBTool.csproj
 src/
-  Plugin.cs            BepInEx 入口、Harmony 初始化、配置绑定、Update 补丁分派
-  ModConfig.cs         键位/选项读取（ConfigEntry → Key 枚举）
+  Plugin.cs            BepInEx 入口、Harmony 初始化、每帧热键分派
+  ModConfig.cs         键位/选项读取（ConfigEntry → Key 枚举，实时值）
+  GameState.cs         空安全玩家块访问
   WinService.cs        一键通关的前置校验与执行
-  LevelGraph.cs        场景扫描：层树、父块、节点标题、可传送目标计算
+  LevelGraph.cs        场景扫描：层树、父块、路径翻转、箱子落点
   TeleportService.cs   传送执行（Turn 登记、状态修复）
   TeleportOverlay.cs   IMGUI 全屏地图：树、格子图、光标、缩放、输入
   UiText.cs            中/英文字符串（按 Prefs.Language 选择）
@@ -181,8 +194,20 @@ src/
    玩家位于箱子内部，箱子仍留在父层原位；`Ctrl+Z` 一次回到传送前，`Ctrl+Y` 再次进入。
 4. 在箱子内传送到父层空格后按 `Ctrl+Z`：回到箱子内原位置（层级也恢复）。
 5. 安装 CustomHubs + `test_hub` 后加载自定义大厅按 F8：
-   树显示 `Area_1`、`Area_2` 及其中的箱子；传送落点与显示一致；F7 在自定义 puzzle 中能正常结算并回自定义大厅。
-6. 覆盖层打开期间：游戏不响应移动/撤销/暂停；关闭后恢复；按 Esc 不会弹出游戏暂停菜单。
+   树显示 `Area_1`、`Area_2` 及其中的箱子；点击箱子进入时落在箱子内部空格（不是父层坐标）；
+   传送落点与显示一致；F7 在自定义 puzzle 中能正常结算并回自定义大厅。
+6. 覆盖层打开期间：游戏不响应移动/撤销/暂停；关闭后恢复；
+   按 Esc 关闭地图后**不会**立刻弹出游戏暂停菜单；按左键传送关闭后不会触发游戏内按钮。
+7. 大厅里按 F7：屏幕顶部出现「大厅里不能通关」提示，不改变游戏状态。
+
+## 实现校正（相对初版设计）
+
+- 箱子落点改为「子层内部离中心最近的空格」：`GetExitBlock()` 的坐标属于父层，不能用于子层内部。
+- 增加 `GameState.Player` 空安全访问：游戏在加载瞬间 `FindPlayerBlock()` 会越界。
+- 翻转改为按层级路径 XOR 求差，而不是单层 `!box.FlipH`。
+- 关闭地图后额外冻结 2 帧（`BlocksGameUpdate`），吞掉关闭用的 Esc/Enter/左键。
+- 增加关闭状态下的 toast；`[Diagnostics] LogSceneTree` 默认关闭。
+- 层级树对多个根层（CustomHubs 的多个顶层 `Block`）编号为 `hub #1`、`hub #2`。
 
 ## 7. 构建与部署
 
