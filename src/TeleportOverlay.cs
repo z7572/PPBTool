@@ -586,7 +586,7 @@ namespace PPBTool
             return voidLevel.blockList != null && voidLevel.blockList.Count > 1;
         }
 
-        private void NavigateToNode(LevelNode node)
+        private void NavigateToNode(LevelNode node, bool preserveNavRefs = false)
         {
             if (node == null)
             {
@@ -594,6 +594,11 @@ namespace PPBTool
             }
 
             PushViewHistory();
+            if (!preserveNavRefs)
+            {
+                navRefs.Clear();
+            }
+
             ExpandAncestors(node);
             if (hideVoid && IsHiddenByVoid(node))
             {
@@ -613,7 +618,7 @@ namespace PPBTool
             ClearMessage();
         }
 
-        private void NavigateToLevel(Level level)
+        private void NavigateToLevel(Level level, bool preserveNavRefs = false)
         {
             LevelNode node = graph.FindNode(level);
             if (node == null)
@@ -622,7 +627,7 @@ namespace PPBTool
                 return;
             }
 
-            NavigateToNode(node);
+            NavigateToNode(node, preserveNavRefs);
         }
 
         private ViewSnapshot CaptureView()
@@ -779,12 +784,8 @@ namespace PPBTool
                 LevelReference reference = navRefs[i];
                 if (reference != null && reference.CanBack && reference.Target == selectedNode.Level)
                 {
+                    navRefs.RemoveAt(i);
                     NavigateToReference(reference);
-                    if (selectedNode != null && selectedNode.Level == reference.Parent)
-                    {
-                        navRefs.RemoveAt(i);
-                    }
-
                     return;
                 }
             }
@@ -1109,7 +1110,7 @@ namespace PPBTool
             {
                 Block colorOwner = block;
                 LevelReference reference = graph.FindReference(block, block.SubLevel);
-                NavigateToLevel(block.SubLevel);
+                NavigateToLevel(block.SubLevel, true);
                 if (selectedNode != null && selectedNode.Level == block.SubLevel)
                 {
                     selectedColorOwner = colorOwner;
