@@ -219,6 +219,18 @@ namespace PPBTool
                         childrenByLevel, parentByLevel, i, rootLevels.Count));
                 }
 
+                // Defensive: a cyclic/malformed parent chain can leave levels unreachable
+                // from any root. Show them as extra roots instead of silently dropping them.
+                foreach (Level level in levels)
+                {
+                    if (level != null && !nodesByLevel.ContainsKey(level))
+                    {
+                        roots.Add(BuildNode(
+                            level, parentByLevel[level], null, 0,
+                            childrenByLevel, parentByLevel, roots.Count, roots.Count + 1));
+                    }
+                }
+
                 Block player = GameState.Player;
                 if (player != null)
                 {
