@@ -1493,6 +1493,7 @@ namespace PPBTool
             {
                 Color levelBg = GameBlockColor(levelOwner, 24);
                 Fill(new Rect(localX, localY, gridW, gridH), levelBg);
+                DrawLevelGrid(level, levelOwner, localX, localY, cell, gridW, gridH);
             }
 
             for (int row = firstRow; row <= lastRow; row++)
@@ -1862,9 +1863,37 @@ namespace PPBTool
             }
         }
 
-        private void DrawBoxGrid(Rect r, Block block, Level sub)
+        private void DrawLevelGrid(
+            Level level, Block owner, float originX, float originY, int cell, float gridW, float gridH)
         {
-            float boxAvg = (r.width + r.height) * 0.5f;
+            float levelAvg = (level.width + level.height) * 0.5f;
+            float scale = ((gridW + gridH) * 0.5f) / Mathf.Max(1f, levelAvg);
+            float line = GameBorderThickness(scale * 0.6f, scale * 0.6f);
+            float hue;
+            float sat;
+            float val;
+            GameBlockHsv(owner, 24, out hue, out sat, out val);
+            val = val * 0.65f - 0.075f;
+            if (LevelGraph.IsCloneBox(owner))
+            {
+                val += 0.075f;
+            }
+
+            Color grid = Hsv(hue, sat, val);
+            grid.a = 0.65f;
+            for (int x = 1; x < level.width; x++)
+            {
+                Fill(new Rect(originX + x * cell, originY, line, gridH), grid);
+            }
+
+            for (int y = 1; y < level.height; y++)
+            {
+                Fill(new Rect(originX, originY + y * cell, gridW, line), grid);
+            }
+        }
+
+        private void DrawBoxGrid(Rect r, Block block, Level sub)
+        {            float boxAvg = (r.width + r.height) * 0.5f;
             float subAvg = (sub.width + sub.height) * 0.5f;
             float scale = boxAvg / Mathf.Max(1f, subAvg);
             float line = GameBorderThickness(scale * 0.6f, scale * 0.6f);
@@ -1880,6 +1909,7 @@ namespace PPBTool
             }
 
             Color grid = Hsv(hue, sat, val);
+            grid.a = 0.65f;
             for (int i = 1; i < sub.width; i++)
             {
                 Fill(new Rect(r.x + r.width * i / sub.width, r.y, line, r.height), grid);
@@ -1893,8 +1923,9 @@ namespace PPBTool
 
         private void DrawBoxContents(Rect r, Block block, Level sub, int cell, int depth)
         {
-            float pad = Mathf.Max(1f, cell * 0.09f);
-            var inner = new Rect(r.x + pad, r.y + pad, r.width - pad * 2f, r.height - pad * 2f);
+            // The game draws the sublevel across the whole box; the border is painted
+            // afterwards on top and does not consume content space.
+            Rect inner = r;
             if (inner.width < 4f || inner.height < 4f || sub.width <= 0 || sub.height <= 0)
             {
                 return;
@@ -2290,7 +2321,7 @@ namespace PPBTool
             }
 
             Color player = Color.Lerp(PlayerCol, Color.white, 0.2f);
-            player.a = 0.5f;
+            player.a = 1f;
             return player;
         }
 
@@ -2298,15 +2329,13 @@ namespace PPBTool
         {
             if (floor.Type == Floor.FloorType.DemoEnd)
             {
-                return new Color(0.05f, 0.05f, 0.06f, 0.5f);
+                return new Color(0.05f, 0.05f, 0.06f, 1f);
             }
 
             Block owner = LevelGraph.ExitBlockOf(floor.OuterLevel);
             if (owner == null)
             {
-                Color fallback = FloorBaseColor(floor.Type);
-                fallback.a = 0.5f;
-                return fallback;
+                return FloorBaseColor(floor.Type);
             }
 
             Color baseColor = GameBlockColor(owner, cell);
@@ -2345,13 +2374,11 @@ namespace PPBTool
 
         private static Color Hsv(float hue, float sat, float val)
         {
-            Color color = Color.HSVToRGB(Mathf.Repeat(hue, 1f), Mathf.Clamp01(sat), Mathf.Clamp01(val));
-            // Game's HSVToRGBGUI: RGB and alpha are both halved.
-            color.r *= 0.5f;
-            color.g *= 0.5f;
-            color.b *= 0.5f;
-            color.a = 0.5f;
-            return color;
+            // The game draws through a custom material; in IMGUI the material's
+            // compensation is absent, so use the full RGB/alpha to match the
+            // visible game brightness. The source HSVToRGBGUI halves both only for
+            // that material path.
+            return Color.HSVToRGB(Mathf.Repeat(hue, 1f), Mathf.Clamp01(sat), Mathf.Clamp01(val));
         }
 
         private static Texture PickTexture(Texture[] textures, int index)
