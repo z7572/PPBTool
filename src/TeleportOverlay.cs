@@ -2327,6 +2327,8 @@ namespace PPBTool
                     DrawWallQuad(big, quad.TR, new Rect(r.x + hw, r.y, hw, hh), color);
                     DrawWallQuad(big, quad.BL, new Rect(r.x, r.y + hh, hw, hh), color);
                     DrawWallQuad(big, quad.BR, new Rect(r.x + hw, r.y + hh, hw, hh), color);
+                    DrawWallCounter(r, block, cell);
+                    DrawFlipShineArt(r, block, cell);
                     if (block.Possessable || block.IsPlayer)
                     {
                         DrawFaceArt(r, block, cell);
@@ -2392,9 +2394,7 @@ namespace PPBTool
                 solved -= block.CountingDelta;
             }
 
-            int fontSize = World.InHub()
-                ? Mathf.Clamp(Mathf.RoundToInt(Screen.height * 0.018f), 12, 20)
-                : Mathf.Clamp(Mathf.RoundToInt(cell * 0.42f), 7, 24);
+            int fontSize = Mathf.Max(7, Mathf.RoundToInt(cell * 0.42f));
             int oldSize = tinyCenterStyle.fontSize;
             Color oldText = tinyCenterStyle.normal.textColor;
             tinyCenterStyle.fontSize = fontSize;
