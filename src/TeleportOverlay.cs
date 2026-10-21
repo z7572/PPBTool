@@ -245,7 +245,7 @@ namespace PPBTool
                 return;
             }
 
-            if (World.State != World.WS.Playing && World.State != World.WS.Paused)
+            if (World.State == World.WS.Initializing)
             {
                 Notify(UiText.Get("map_blocked_state"), true);
                 return;
@@ -2026,13 +2026,14 @@ namespace PPBTool
 
                 case Floor.FloorType.PlayerButton:
                     DrawButtonBorder(r, color);
-                    DrawGameTexture(r, texEyesLarge, texEyesSmall,
-                        Color.Lerp(color, Color.white, 0.45f), 1f);
+                    Color eyeTint = Color.Lerp(color, Color.white, 0.45f);
+                    eyeTint.a = color.a;
+                    DrawGameTexture(r, texEyesLarge, texEyesSmall, eyeTint, 1f);
                     break;
 
                 case Floor.FloorType.Info:
                     DrawButtonBorder(r, color);
-                    DrawGameTexture(r, texInfo, texInfo, Color.white, 0.9f);
+                    DrawGameTexture(r, texInfo, texInfo, new Color(1f, 1f, 1f, color.a), 0.9f);
                     break;
 
                 case Floor.FloorType.LevelPortal:
