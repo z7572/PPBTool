@@ -75,6 +75,41 @@ if (SubLevel != null && !SubLevel.BlocksWithThisAsTheirSubLevel.Contains(this))
 - `GetExitBlock()` 只用于“默认出口/相机/颜色”等 primary 语义；不是“唯一外层”。
 - 因此 mod 的 Back 不能用“树的唯一父节点”代替“引用”。
 
+### 3.4 两个箱子重叠：为什么“只生成一个”但出口仍生效
+
+`Block.Init`（`_decomp/Block.cs:240`）：
+
+```csharp
+if (OuterLevel != null)
+{
+    if (OuterLevel.blocks[xpos, ypos] != null)
+        Debug.LogWarning("Trying to init block where there already is one");
+    OuterLevel.blocks[xpos, ypos] = this;   // 后 Init 的覆盖前一个
+}
+if (SubLevel != null && !SubLevel.BlocksWithThisAsTheirSubLevel.Contains(this))
+    SubLevel.BlocksWithThisAsTheirSubLevel.Add(this); // 两个都保留在引用列表
+```
+
+所以：
+
+- **网格 `level.blocks[x,y]` 只能放一个**：后加载的箱子覆盖前一个；
+- **`level.blockList` 只从网格重建**（`World.ComputeBlockLists`）：
+  只有网格获胜者会进入 `blockList`，也只有它会被正常渲染/参与碰撞；
+- **被覆盖的箱子仍存在于 `World.blocks` 和 `SubLevel.BlocksWithThisAsTheirSubLevel`**；
+- `Level.GetExitBlock()` 返回 `BlocksWithThisAsTheirSubLevel[0]`，与网格里是谁无关；
+- 出口逻辑使用 `GetExitBlock()` 的 `OuterLevel/xpos/ypos`。两个箱子坐标相同：
+  - 即使出口箱子是被覆盖、**不在网格/不渲染**的那个，`GetExitBlock()` 仍能返回它；
+  - 玩家从该层退出时，仍会出现在同一个 `(x,y)`，所以“出口正常起作用”；
+  - 如果出口箱子是网格获胜者，则它也就是可见箱子，行为相同。
+- 视觉上只看到网格获胜者；如果获胜者不是 primary，`IsCloneBox` 仍按 `GetExitBlock` 判断，可能显示为 clone，这和游戏一致。
+
+**v3 的问题**：
+
+- `LevelGraph` 用 `BlocksWithThisAsTheirSubLevel` 建父链，但地图点击只命中网格获胜者；
+- `PreferredParent` 可能选到**被覆盖的隐藏引用**，导致树父节点/Back 指向的箱子与地图上看到的箱子不是同一个 SubLevel；
+- `refs` 计数包含隐藏引用，但没有标记 hidden/overlap；
+- Back 到隐藏引用仍可定位到同一 `(x,y)`，但用户无法通过点击该格重新进入隐藏层（点击会打开网格获胜者的 SubLevel）。
+
 ## 4. v3 的问题定位
 
 ### 4.1 Back 不完整
@@ -185,11 +220,23 @@ sealed class LevelReference
     Level Parent;         // Block.OuterLevel（RootOwner 为 null）
     int X, Y;             // Block.xpos/ypos；Parent 为 null 时无意义
     RefKind Kind;
+    bool IsGridResident;  // Parent.blocks[X,Y] == this（地图上实际可见/可点击）
+    bool IsHiddenOverlap; // 与同一格的 grid occupant 重叠、但不是 occupant
+    Level Target;         // Block.SubLevel
     bool GameVisible;     // 父层当前是否被游戏绘制（仅用于标签，不阻止 Back）
     bool CanBack;         // Parent != null 且 Parent 仍在 World.levels 中
     string Label;         // "Area Transfer (5,5) · clone" 等
 }
 ```
+
+`IsGridResident`：
+
+```csharp
+Parent != null && Parent.blocks[X, Y] == Block
+```
+
+- 隐藏重叠引用仍然 `CanBack == true`（出口/引用仍有效）；
+- 只有网格 occupant 能在 map 上被点击/重新进入；隐藏引用通过 tree / reference chooser 进入。
 
 `CanBack` 的定义：
 
@@ -369,6 +416,36 @@ Infinite Exit ×1
    ```
    用于实际对比“游戏显示但 mod 不画”的 hub 场景。
 
+### 5.7 重叠引用（两个箱子同格）
+
+- **枚举**：`BlocksWithThisAsTheirSubLevel` 全部保留，包括被网格覆盖的隐藏引用。
+- **map 渲染/点击**：
+  - 只渲染/点击 `Parent.blocks[x,y]` 的网格 occupant（与游戏一致）；
+  - 隐藏重叠引用不在 map 上单独画，也不响应点击。
+- **树父级（DisplayParent）**：
+  - 优先选 `IsGridResident` 的非虚空引用；
+  - 其次非虚空引用；
+  - 其次 void 引用；
+  - 这样树节点父级/光标对应“地图上实际看到的箱子”，避免 v3 的“树父节点是隐藏引用，但地图格是另一个 SubLevel”。
+- **引用列表**：
+  - 保留所有隐藏引用；`LevelReference.Label` 标注：
+    - `grid`（可见）
+    - `hidden overlap`（同格被覆盖）
+    - `primary`（`GetExitBlock`）
+  - `refs ×N` 仍统计全部；详情可显示 `refs ×N (M hidden overlap)`。
+- **Go to Reference**：
+  - 隐藏引用同样可导航到父层同一 `(x,y)`；
+  - 到达后光标在该格；点击只能打开 grid occupant，因此要再次进入隐藏层，使用 reference chooser / 树节点，而不是点击地图格。
+- **出口语义**：
+  - clone/颜色/出口仍以 `GetExitBlock` 为准；
+  - 如果 primary 是隐藏重叠引用，地图上的 grid occupant 仍按 `IsCloneBox` 显示为 clone（与游戏一致）；
+  - 隐藏出口能正常退出，因为出口逻辑用 `GetExitBlock` 的 `OuterLevel/xpos/ypos`，不要求它在网格里。
+- **CanBack**：
+  - 隐藏重叠引用只要有 `OuterLevel != null` 且在 `World.levels` 中，就 `CanBack == true`；
+  - 校验时不要加 `IsGridResident` 条件。
+- **树/引用 chooser 的标签**：
+  - 显示 `Target` 层名、父层 `(x,y)`、`grid/hidden overlap`、`primary/clone/inf`，避免两个同格引用不可区分。
+
 ## 6. 验收标准
 
 1. **引用/Back**：
@@ -378,6 +455,7 @@ Infinite Exit ×1
    - **Box1 ↔ Box2 循环**：从 Box2 的 Box1 引用进入 Box1 后，Back 回到 Box2；从树打开 Box1 且存在多个引用时，Reference chooser 能选择 Box2；
    - **根节点但有 void 引用**：Back 能去对应虚空；
    - **只有 root owner、无任何 OuterLevel 引用**：Back 禁用并提示。
+   - **两个箱子同格**：出口在隐藏覆盖引用时出口仍正常；树父级指向 grid occupant；reference chooser 能区分/进入 hidden overlap。
 2. **无引用背景**：
    - 不再纯黑；有 block/palette fallback；
    - 背景只影响箱子内部，外部仍黑。
@@ -400,13 +478,14 @@ Infinite Exit ×1
 3. **无限符号“游戏显示但 mod 不画”** 仍可能是 hub 特殊 TUI/portal 渲染；需要 `LogInfSymbols` 对照。
 4. **Back stack** 与传送/Undo 的交互：默认保留 stack；如果用户不希望传送后 Back 回旧位置，可配置清空。
 5. **Void 引用的 Back**：即使虚空当前被 `隐藏虚空` 过滤，Back 也要能导航过去并自动恢复显示；需实机确认虚空加载/层级节点存在。
-6. **无引用背景 fallback** 的颜色优先级需要实机确认；先用 block → palette.root → neutral。
+6. **重叠引用**：CustomHubs/自定义关卡可能在同一格 Init 多个箱子；需要实机确认 `blockList` 只含 grid occupant、隐藏出口仍可退出，以及 `GetExitBlock` 是哪个。
+7. **无引用背景 fallback** 的颜色优先级需要实机确认；先用 block → palette.root → neutral。
 
 ## 8. 预计改动（批准后）
 
 - `src/LevelGraph.cs`：
-  - `LevelReference`/`RefKind`；
-  - `References`、`Primary`、`PreferredBack`；
+  - `LevelReference`/`RefKind`、`IsGridResident`/`IsHiddenOverlap`；
+  - `References`、`DisplayParent`、`Primary`、`PreferredBack`；
   - `BuildTags` 拆分 refs/enter/exit；
   - `BuildInfinityCounts` 保留但改名语义。
 - `src/TeleportOverlay.cs`：
