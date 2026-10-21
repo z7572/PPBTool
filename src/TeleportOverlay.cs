@@ -1492,7 +1492,6 @@ namespace PPBTool
             if (levelOwner != null && levelOwner.OuterLevel != null)
             {
                 Color levelBg = GameBlockColor(levelOwner, 24);
-                levelBg.a = 1f;
                 Fill(new Rect(localX, localY, gridW, gridH), levelBg);
             }
 
@@ -1836,19 +1835,16 @@ namespace PPBTool
             Fill(r, color);
             if (texGradient != null)
             {
-                DrawTextureTinted(r, texGradient, new Color(1f, 1f, 1f, 0.42f));
-            }
-
-            if (sub != null)
-            {
-                // Fallback grid for boxes too small to draw contents; when contents
-                // are drawn, the inner grid is painted before the child cells.
-                DrawBoxGrid(r, block, sub, color);
+                DrawTextureTinted(r, texGradient, new Color(0f, 0f, 0f, 0.08f));
             }
 
             if (sub != null && cell >= 14f && depth < 4)
             {
-                DrawBoxContents(r, block, sub, cell, depth, color);
+                DrawBoxContents(r, block, sub, cell, depth);
+            }
+            else if (sub != null)
+            {
+                DrawBoxGrid(r, block, sub);
             }
 
             DrawBoxBorder(r, block, sub, cell);
@@ -1866,14 +1862,24 @@ namespace PPBTool
             }
         }
 
-        private void DrawBoxGrid(Rect r, Block block, Level sub, Color color)
+        private void DrawBoxGrid(Rect r, Block block, Level sub)
         {
             float boxAvg = (r.width + r.height) * 0.5f;
             float subAvg = (sub.width + sub.height) * 0.5f;
             float scale = boxAvg / Mathf.Max(1f, subAvg);
             float line = GameBorderThickness(scale * 0.6f, scale * 0.6f);
-            Color grid = Color.Lerp(color, Color.black, 0.42f);
-            grid.a = 0.65f;
+            int cell = Mathf.Max(1, Mathf.RoundToInt(boxAvg));
+            float hue;
+            float sat;
+            float val;
+            GameBlockHsv(block, cell, out hue, out sat, out val);
+            val = val * 0.65f - 0.075f;
+            if (LevelGraph.IsCloneBox(block))
+            {
+                val += 0.075f;
+            }
+
+            Color grid = Hsv(hue, sat, val);
             for (int i = 1; i < sub.width; i++)
             {
                 Fill(new Rect(r.x + r.width * i / sub.width, r.y, line, r.height), grid);
@@ -1885,7 +1891,7 @@ namespace PPBTool
             }
         }
 
-        private void DrawBoxContents(Rect r, Block block, Level sub, int cell, int depth, Color boxColor)
+        private void DrawBoxContents(Rect r, Block block, Level sub, int cell, int depth)
         {
             float pad = Mathf.Max(1f, cell * 0.09f);
             var inner = new Rect(r.x + pad, r.y + pad, r.width - pad * 2f, r.height - pad * 2f);
@@ -1899,9 +1905,7 @@ namespace PPBTool
                 return;
             }
 
-            boxColor.a = 1f;
-            Fill(inner, boxColor);
-            DrawBoxGrid(inner, block, sub, boxColor);
+            DrawBoxGrid(inner, block, sub);
 
             float mini = Mathf.Min(inner.width / sub.width, inner.height / sub.height);
             if (mini < 2f)
@@ -1930,9 +1934,16 @@ namespace PPBTool
         {
             float thickness = GameBorderThickness(r.width, r.height);
             Color border = block.borderColor;
-            if (border.a <= 0.01f)
+            if (border.r <= 0.001f && border.g <= 0.001f && border.b <= 0.001f)
             {
-                border = new Color(1f, 1f, 1f, 0.22f);
+                border = Color.white;
+            }
+
+            border.a = 0.12f;
+            if (block.Locked)
+            {
+                border = Color.red;
+                border.a = 0.9f;
             }
 
             if (sub == null)
@@ -2225,10 +2236,19 @@ namespace PPBTool
 
         private Color GameBlockColor(Block block, int cell)
         {
+            float hue;
+            float sat;
+            float val;
+            GameBlockHsv(block, cell, out hue, out sat, out val);
+            return Hsv(hue, sat, val);
+        }
+
+        private static void GameBlockHsv(Block block, int cell, out float hue, out float sat, out float val)
+        {
             Block owner = LevelGraph.ExitBlockOf(block.OuterLevel);
-            float hue = block.hue;
-            float sat = block.sat;
-            float val = block.val;
+            hue = block.hue;
+            sat = block.sat;
+            val = block.val;
             if (val <= 0.0001f && owner != null)
             {
                 hue = owner.hue;
@@ -2248,8 +2268,9 @@ namespace PPBTool
                 sat *= 0.76f;
             }
 
+            hue = Mathf.Repeat(hue, 1f);
+            sat = Mathf.Clamp01(sat);
             val = Mathf.Clamp(val, 0.12f, 1f);
-            return Hsv(hue, sat, val);
         }
 
         private Color GamePlayerColor(Block block, int cell)
@@ -2262,26 +2283,36 @@ namespace PPBTool
             Block owner = LevelGraph.ExitBlockOf(block.OuterLevel);
             if (owner != null)
             {
-                return Color.Lerp(GameBlockColor(owner, cell), PlayerCol, 0.45f);
+                Color baseColor = GameBlockColor(owner, cell);
+                Color mixed = Color.Lerp(baseColor, PlayerCol, 0.45f);
+                mixed.a = baseColor.a;
+                return mixed;
             }
 
-            return Color.Lerp(PlayerCol, Color.white, 0.2f);
+            Color player = Color.Lerp(PlayerCol, Color.white, 0.2f);
+            player.a = 0.5f;
+            return player;
         }
 
         private Color GameFloorColor(Floor floor, int cell)
         {
             if (floor.Type == Floor.FloorType.DemoEnd)
             {
-                return new Color(0.05f, 0.05f, 0.06f, 1f);
+                return new Color(0.05f, 0.05f, 0.06f, 0.5f);
             }
 
             Block owner = LevelGraph.ExitBlockOf(floor.OuterLevel);
             if (owner == null)
             {
-                return FloorBaseColor(floor.Type);
+                Color fallback = FloorBaseColor(floor.Type);
+                fallback.a = 0.5f;
+                return fallback;
             }
 
-            return Color.Lerp(GameBlockColor(owner, cell), Color.white, 0.10f);
+            Color baseColor = GameBlockColor(owner, cell);
+            Color mixed = Color.Lerp(baseColor, Color.white, 0.10f);
+            mixed.a = baseColor.a;
+            return mixed;
         }
 
         private Color LevelBackgroundColor(Level level)
@@ -2314,7 +2345,13 @@ namespace PPBTool
 
         private static Color Hsv(float hue, float sat, float val)
         {
-            return Color.HSVToRGB(Mathf.Repeat(hue, 1f), Mathf.Clamp01(sat), Mathf.Clamp01(val));
+            Color color = Color.HSVToRGB(Mathf.Repeat(hue, 1f), Mathf.Clamp01(sat), Mathf.Clamp01(val));
+            // Game's HSVToRGBGUI: RGB and alpha are both halved.
+            color.r *= 0.5f;
+            color.g *= 0.5f;
+            color.b *= 0.5f;
+            color.a = 0.5f;
+            return color;
         }
 
         private static Texture PickTexture(Texture[] textures, int index)
