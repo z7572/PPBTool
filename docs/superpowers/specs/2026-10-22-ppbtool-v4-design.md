@@ -185,18 +185,31 @@ sealed class LevelReference
     Level Parent;         // Block.OuterLevel（RootOwner 为 null）
     int X, Y;             // Block.xpos/ypos；Parent 为 null 时无意义
     RefKind Kind;
-    bool GameVisible;     // 父层当前是否被游戏绘制
-    bool CanBack;         // Parent != null && 父层可导航
+    bool GameVisible;     // 父层当前是否被游戏绘制（仅用于标签，不阻止 Back）
+    bool CanBack;         // Parent != null 且 Parent 仍在 World.levels 中
     string Label;         // "Area Transfer (5,5) · clone" 等
 }
 ```
+
+`CanBack` 的定义：
+
+```csharp
+Block != null
+&& Block.SubLevel == level
+&& Block.OuterLevel != null
+&& World.levels.Contains(Block.OuterLevel)
+```
+
+- **RootOwner 永远不 CanBack**（`OuterLevel == null`，没有“外层位置”）。
+- **Void 引用可以 CanBack**：即使该层在树里是根节点，只要游戏里能看到它的外层是虚空，就应该能回到那个虚空。
+- `GameVisible` 只影响标签/过滤显示，不阻止 Back；虚空当前是否被 `隐藏虚空` 过滤掉，导航时再临时处理。
 
 `LevelGraph` 为每个 `Level` 构建：
 
 ```csharp
 List<LevelReference> References;
 LevelReference Primary;      // GetExitBlock, 可能不可 Back
-LevelReference PreferredBack; // 最后一个可用引用/默认引用
+LevelReference PreferredBack; // 最近一次有效引用（可为 null；不用于盲猜）
 int VisibleReferenceCount;
 ```
 
@@ -211,7 +224,11 @@ int VisibleReferenceCount;
 
 **不修改游戏数据**，只读 `BlocksWithThisAsTheirSubLevel`。
 
-### 5.2 引用导航（Back）
+### 5.2 引用导航（Go to Reference）
+
+**按钮改名**：v3 的 `返回上一级` 改为 **`回到引用处` / `Go to Reference`**。
+它不是“树上的父级”，而是“回到引用当前层级的那个箱子所在位置”。
+`Backspace` 保留。
 
 新增 **reference stack**（不是树父链）：
 
@@ -225,21 +242,35 @@ Stack<LevelReference> navRefs;
   - 打开 `block.SubLevel`。
 - 通过树/无限菜单/传送门导航：
   - 不 push 任意猜测的父引用；
-  - 选择该 Level 的 `PreferredBack` 作为“默认外层引用”，或保持 stack 为空。
-- **Back 按钮 / Backspace**：
+  - 保持 stack 为空。
+- **Go to Reference 按钮 / Backspace**：
   1. 如果 `navRefs` 非空：pop 顶部，导航到 `reference.Parent`，光标定在 `(reference.X, reference.Y)`；
-  2. 否则使用 `PreferredBack`：
-     - 优先 `CanBack && Kind != RootOwner` 的引用；
-     - 优先非虚空、非生成、非 clone 的真实父箱；
-     - 其次 clone；
-     - 其次可见虚空里的引用；
-  3. 如果没有任何 `CanBack` 引用：**不跳转**，提示 `No outer reference` / `无外层引用`；按钮禁用。
+  2. 否则收集当前 Level 的所有 `CanBack` 引用：
+     - **0 个**：按钮禁用，提示 `No outer reference` / `无外层引用`；
+     - **1 个**：直接去这个引用；
+     - **多个**：打开 **Reference chooser**，列出每个引用的父层/坐标/kind（Box2、void、clone…），由用户选择；不自动猜一个。
+  3. stack 顶部的引用如果已经失效（`Block.SubLevel != level` / 父层不在 `World.levels`），跳过并继续下一个。
+- **多引用示例**：
+  - Box1 包含 Box2 引用，Box2 包含 Box1 引用；当前在 Box1 层级：
+    - 如果是从 Box2 里的 Box1 引用点进来的：`navRefs` 顶部就是该引用，Back 直接回到 **Box2 层级**，光标在 Box2 里的 Box1 箱子；
+    - 如果是从树直接打开 Box1 层级：没有 stack；Box1 的引用可能同时有 Box2、void 等，Back 打开 Reference chooser，选择 **Box2** 就能进入 Box2；
+    - 循环 A→B→A→B 用 stack + 64 深度上限处理，不依赖树父链。
+  - Box1 在游戏里的外层是虚空，但树里是根节点：
+    - `BlocksWithThisAsTheirSubLevel` 里有 `OuterLevel.InfZone` 的 ∞退出引用；
+    - 该引用 `CanBack == true`；Back/chooser 直接去那个虚空楼层，光标在虚空里的箱子引用。
+  - Box1 在游戏里外层什么都没有：
+    - 只有 `OuterLevel == null` 的 root owner，没有 `CanBack` 引用；
+    - Back 禁用并提示。
 - **场景切换/传送**：
   - 场景变化清空 `navRefs`；
   - 同一场景内 Undo/Redo 不清空（UI 导航不是 Undo turn）；
   - Teleport 到不同 Level 时，可选保留 stack；spec 默认保留，Back 仍回到进入点。
-- **循环保护**：stack 深度限制（例如 64），重复引用去重；避免 A→B→A 无限。
+- **循环保护**：stack 深度限制（例如 64），每次 push 校验引用仍有效；不要因为 A↔B 引用而无限。
 - **自定义大厅**：因为枚举全部 `BlocksWithThisAsTheirSubLevel`，即使父引用不在树父链上，也能 Back；树只影响显示，不影响引用导航。
+- **根节点不等于无外层**：
+  - `root node` 只表示树里没有“真实父箱”；
+  - 不代表没有虚空/∞退出引用；
+  - Back 以引用列表为准，不以 `ParentNode` 为准。
 
 ### 5.3 树显示
 
@@ -252,7 +283,7 @@ Stack<LevelReference> navRefs;
   - 列出所有 `CanBack` 引用：父层标题 + `(x,y)` + kind + clone/inf/void；
   - 点击直接导航到该引用所在父层并定位光标；
   - 这解决“树只有一个父节点”的显示限制。
-- Back 仍优先 stack；没有 stack 时用 `PreferredBack`。
+- Go to Reference 优先 stack；没有 stack 时：0 个引用禁用、1 个直接去、多个打开 Reference chooser；不自动使用 `PreferredBack` 盲猜。
 
 ### 5.4 无引用层级的背景
 
@@ -341,9 +372,12 @@ Infinite Exit ×1
 ## 6. 验收标准
 
 1. **引用/Back**：
+   - 按钮改名为“回到引用处 / Go to Reference”，Backspace 保留；
    - 点击任意箱子进入后，Back 回到**该箱子所在位置**，而不是 primary/树父节点；
    - clone 箱、CustomHubs Ref、多引用层级都能回到实际入口；
-   - 无引用层 Back 禁用并提示。
+   - **Box1 ↔ Box2 循环**：从 Box2 的 Box1 引用进入 Box1 后，Back 回到 Box2；从树打开 Box1 且存在多个引用时，Reference chooser 能选择 Box2；
+   - **根节点但有 void 引用**：Back 能去对应虚空；
+   - **只有 root owner、无任何 OuterLevel 引用**：Back 禁用并提示。
 2. **无引用背景**：
    - 不再纯黑；有 block/palette fallback；
    - 背景只影响箱子内部，外部仍黑。
@@ -365,7 +399,8 @@ Infinite Exit ×1
 2. **`DrawStyle`/`iii` 的反射**：`Draw.DrawStyle`、`Draw.iii` 是私有/静态字段，需反射；缺失时按可见处理并记录日志。
 3. **无限符号“游戏显示但 mod 不画”** 仍可能是 hub 特殊 TUI/portal 渲染；需要 `LogInfSymbols` 对照。
 4. **Back stack** 与传送/Undo 的交互：默认保留 stack；如果用户不希望传送后 Back 回旧位置，可配置清空。
-5. **无引用背景 fallback** 的颜色优先级需要实机确认；先用 block → palette.root → neutral。
+5. **Void 引用的 Back**：即使虚空当前被 `隐藏虚空` 过滤，Back 也要能导航过去并自动恢复显示；需实机确认虚空加载/层级节点存在。
+6. **无引用背景 fallback** 的颜色优先级需要实机确认；先用 block → palette.root → neutral。
 
 ## 8. 预计改动（批准后）
 
