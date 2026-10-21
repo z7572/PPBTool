@@ -6,8 +6,7 @@ namespace PPBTool
 {
     internal sealed class ModConfig
     {
-        private readonly ConfigEntry<KeyboardShortcut> winLevelKey;
-        private readonly ConfigEntry<KeyboardShortcut> teleportKey;
+        private readonly ConfigEntry<KeyboardShortcut> openMapKey;
         private readonly ConfigEntry<bool> closeAfterTeleport;
         private readonly ConfigEntry<bool> undoable;
         private readonly ConfigEntry<int> cellSize;
@@ -19,15 +18,10 @@ namespace PPBTool
 
         public ModConfig(ConfigFile config)
         {
-            winLevelKey = config.Bind(
-                "Keys", "WinLevel", new KeyboardShortcut(KeyCode.F7),
-                "Keyboard shortcut for instantly completing the current level. " +
-                "BepInEx KeyboardShortcut syntax, e.g. F7, Ctrl+F7, Shift+F8.");
-
-            teleportKey = config.Bind(
-                "Keys", "Teleport", new KeyboardShortcut(KeyCode.F8),
-                "Keyboard shortcut for opening/closing the teleport map browser. " +
-                "BepInEx KeyboardShortcut syntax, e.g. F8, Ctrl+F8, Shift+F8.");
+            openMapKey = config.Bind(
+                "Keys", "OpenMap", new KeyboardShortcut(KeyCode.F7),
+                "Keyboard shortcut for opening/closing the map browser. " +
+                "BepInEx KeyboardShortcut syntax, e.g. F7, Ctrl+F7.");
 
             closeAfterTeleport = config.Bind(
                 "Teleport", "CloseAfterTeleport", true,
@@ -116,14 +110,9 @@ namespace PPBTool
             set { language.Value = value; }
         }
 
-        public bool WinPressed()
+        public bool OpenMapPressed()
         {
-            return winLevelKey.Value.IsDown();
-        }
-
-        public bool TeleportPressed()
-        {
-            return teleportKey.Value.IsDown();
+            return openMapKey.Value.IsDown();
         }
     }
 }

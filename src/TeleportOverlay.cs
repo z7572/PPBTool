@@ -1505,16 +1505,31 @@ namespace PPBTool
             x = ToolButton(x, y, UiText.Get("expand_all"), true, false, ExpandAll) + 6f;
             ToolButton(x, y, UiText.Get("refresh"), true, false, () => RebuildGraph(true));
 
-            // Language switch is always pinned to the far right of the menu bar.
+            // Right side: one-click win, then the language switch at the far right.
             string languageLabel = UiText.ToggleLabel;
             float languageWidth = buttonStyle.CalcSize(new GUIContent(languageLabel)).x + 16f;
-            ToolButton(
-                rect.xMax - Margin - languageWidth,
-                y,
-                languageLabel,
-                true,
-                false,
-                ToggleLanguage);
+            float languageX = rect.xMax - Margin - languageWidth;
+
+            string winLabel = UiText.Get("win_button");
+            float winWidth = buttonStyle.CalcSize(new GUIContent(winLabel)).x + 16f;
+            float winX = languageX - 8f - winWidth;
+
+            ToolButton(winX, y, winLabel, true, false, WinFromMenu);
+            ToolButton(languageX, y, languageLabel, true, false, ToggleLanguage);
+        }
+
+        private void WinFromMenu()
+        {
+            string message;
+            bool won = WinService.TryWin(out message);
+            Notify(message, !won);
+            if (won)
+            {
+                // The browser may have been opened while the game was paused.
+                // Resume in Playing so the normal win animation can run after Close.
+                savedState = World.WS.Playing;
+                Close();
+            }
         }
 
         private void ToggleLanguage()

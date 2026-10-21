@@ -26,7 +26,7 @@ namespace PPBTool
                 return false;
             }
 
-            if (World.State != World.WS.Playing)
+            if (World.State != World.WS.Playing && World.State != World.WS.Paused)
             {
                 message = UiText.Get("win_blocked_state");
                 return false;

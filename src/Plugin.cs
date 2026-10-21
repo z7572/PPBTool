@@ -87,9 +87,9 @@ namespace PPBTool
                     return;
                 }
 
-                // F8 must always be able to close/open the browser, even while a
+                // F7 must always be able to close/open the browser, even while a
                 // reference/infinity modal is open. Handle it before the game gate.
-                if (settings.TeleportPressed())
+                if (settings.OpenMapPressed())
                 {
                     overlay.Toggle();
                     return;
@@ -100,13 +100,6 @@ namespace PPBTool
                 if (overlay.BlocksGameUpdate)
                 {
                     return;
-                }
-
-                if (settings.WinPressed())
-                {
-                    string message;
-                    bool won = WinService.TryWin(out message);
-                    overlay.Notify(message, !won);
                 }
             }
             catch (Exception ex)

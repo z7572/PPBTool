@@ -13,6 +13,7 @@ namespace PPBTool
                 { "level", new[] { "层级", "Level" } },
                 { "levels", new[] { "层级", "levels" } },
                 { "close", new[] { "关闭 X", "Close X" } },
+                { "win_button", new[] { "一键过关", "Win" } },
                 { "back_parent", new[] { "← 回到引用处", "← Go to Reference" } },
                 { "no_outer_reference", new[] { "没有可返回的外层引用", "No outer reference" } },
                 { "reference_chooser", new[] { "选择引用", "Choose reference" } },
