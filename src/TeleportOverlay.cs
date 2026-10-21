@@ -1372,9 +1372,16 @@ namespace PPBTool
             {
                 float x = rect.x + 430f;
                 float width = Mathf.Max(120f, rect.width - x - 130f);
-                GUI.Label(new Rect(x, rect.y + 5f, width, 24f),
-                    Ellipsize(UiText.Get("level") + ": " + selectedNode.Path, labelStyle, width),
-                    labelStyle);
+                string prefix = UiText.Get("level") + ": ";
+                float prefixWidth = labelStyle.CalcSize(new GUIContent(prefix)).x;
+                string path = prefix + EllipsizeStart(
+                    selectedNode.Path, labelStyle, Mathf.Max(1f, width - prefixWidth));
+                if (labelStyle.CalcSize(new GUIContent(path)).x > width)
+                {
+                    path = EllipsizeStart(selectedNode.Path, labelStyle, width);
+                }
+
+                GUI.Label(new Rect(x, rect.y + 5f, width, 24f), path, labelStyle);
                 GUI.Label(new Rect(x, rect.y + 31f, width, 20f),
                     Ellipsize(selectedNode.Subtitle, smallStyle, width), smallStyle);
             }
@@ -1415,6 +1422,59 @@ namespace PPBTool
             }
 
             return low <= 0 ? suffix : text.Substring(0, low) + suffix;
+        }
+
+        private static string EllipsizeStart(string text, GUIStyle style, float maxWidth)
+        {
+            if (string.IsNullOrEmpty(text) || maxWidth <= 4f || style == null)
+            {
+                return text ?? string.Empty;
+            }
+
+            if (style.CalcSize(new GUIContent(text)).x <= maxWidth)
+            {
+                return text;
+            }
+
+            const string prefix = "...";
+            int low = 0;
+            int high = text.Length;
+            while (low < high)
+            {
+                int mid = (low + high) / 2;
+                string candidate = prefix + text.Substring(mid);
+                if (style.CalcSize(new GUIContent(candidate)).x <= maxWidth)
+                {
+                    high = mid;
+                }
+                else
+                {
+                    low = mid + 1;
+                }
+            }
+
+            if (low <= 0)
+            {
+                return prefix + text;
+            }
+
+            if (low >= text.Length)
+            {
+                return prefix;
+            }
+
+            // Prefer a whole hierarchy segment: "... / Last / Current".
+            int separator = text.IndexOf(" / ", low, StringComparison.Ordinal);
+            if (separator >= 0)
+            {
+                string segmentTail = prefix + " / " + text.Substring(separator + 3);
+                if (style.CalcSize(new GUIContent(segmentTail)).x <= maxWidth)
+                {
+                    return segmentTail;
+                }
+            }
+
+            return prefix + text.Substring(low);
         }
 
         private void DrawToolbar(Rect rect)
