@@ -175,24 +175,23 @@ RenderContext       DrawRealCell（可见单元格、递归深度、翻转、裁
 ### 4.3 墙的连接状态
 
 - 直接使用 `Block.WallTileIndex` / `WallTileIndexFlipH`（`Autotile` 已在读档时算好）。
-- 小格用 `WallTiles`/`WallTilesFlip`；大格用 `WallBig`/`WallBigFlip` 四象限。
+- 小格用 `WallTiles`/`WallTilesFlip`；大格必须用 **`Autotile.quads[WallTileIndex]` 的 `TL/TR/BL/BR`** 去索引 `WallBig`/`WallBigFlip`。不要使用 `Block.WallBigTL/TR/BL/BR` 字段（v3 初版因此在大格时四个角都取到同一个“下-右”图）。
 - 边框由 `Level.leftWall/rightWall/upWall/downWall` 控制；`Rooted*`/`Locked`/`Counting` 按 `DrawWall` 逻辑。
 - 颜色使用 `ComputeWallColor(level.GetExitBlock(), ...)`；墙自己的 `hue/sat/val` 不参与（通常为 0）。
 - 需要绘制 `DrawBlockShadow`/`DrawBlockBorder` 的阴影/边框，避免“只有色块”的观感。
 
 ### 4.3.1 空格与关卡背景
 
-v2 的空格用固定 `EmptyCol` 灰色填充，这是示意图做法，v3 必须改为游戏逻辑：
+v2 的空格用固定 `EmptyCol` 灰色填充，这是示意图做法，v3 改为游戏逻辑：
 
-- 游戏没有“独立的灰色空格地砖”。一个关卡/箱子内部的空间，其底色来自**该层出口块的箱子底色**（`ComputeBlockColor(exitBlock)` + `CenterGradientTex`/背景处理）；空格就是这层底色。
-- v3 的 `LevelBackgroundColor` / `MapBackground`：
-  - 画布整体铺 `LevelBackgroundColor(level)`；
-  - `LevelBackgroundColor` 使用 `level.GetExitBlock()` 的 `ComputeBlockColor`（必要时按游戏背景做暗化/去饱和），而不是固定 `EmptyCol`；
-  - 空格不再覆盖固定灰色；只在没有 floor/block 时保留这层背景；
-  - 箱子内部同理：`BoxArt` 的底色就是子层的背景，递归内容画在其上；
-  - 网格线（`Prefs.Grid`）使用游戏 `DrawBlock` 的网格颜色公式（`val *= 0.65; val -= 0.075; clone 修正`），不是 UI 自己的分隔线。
-- 验收：开启/关闭关卡缩略图、切换不同关卡时，空格底色应随该层出口块颜色变化，而不是永远深灰。
-- 根层没有出口块（`GetExitBlock() == null`）时，退回游戏背景/深色中性底，不要把“没有出口块”误判成固定 `EmptyCol`。
+- **关卡/画布外部是黑色**；空格也是黑色，不铺关卡颜色。
+- **只有箱子有背景色**：箱子的 cell 用该箱子的 `GameBlockColor` 填充；箱子内部用同一箱子的背景色；`BoxArt` 的底色就是子层背景，递归内容画在其上。
+- `LevelBackgroundColor` 只用于箱子内部/箱子填充，不用于箱子外部画布。
+- 网格线始终绘制在箱子内部，用于显示子层结构；**网格线宽度按游戏公式动态计算**，不是固定像素：
+  - 外框：`ComputeBorderThickness(boxW, boxH)`；
+  - 网格：`ComputeBorderThickness(((boxW+boxH)/2 / ((subW+subH)/2)) * 0.6, ...)`；
+  - 公式：`Max(Round(Clamp(Min(w,h)/30, 1, Min(ScreenW,ScreenH)*0.00508)), 1)`。
+- 验收：箱子外全黑；箱内背景有颜色；放大/缩小时框线和网格线按比例变粗/变细，不是固定宽度。
 
 ### 4.4 玩家脸
 
@@ -202,16 +201,21 @@ v2 的空格用固定 `EmptyCol` 灰色填充，这是示意图做法，v3 必�
   - 透明度公式；
   - 嘴巴/表情纹理；
   - `FaceAnimT` 眨眼（静态快照取当前值）。
-- 只为 `DrawIsPlayer` 或 `Possessable` 的块画脸；箱子/墙不画。
+- **玩家箱子的脸有两种上下文**：
+  - 当前层就是玩家箱子的内部（`exitBlock.IsPlayer && exitBlock.SubLevel == level`）：在**整个地图/整个箱子**上以**高透明度**（`-log10(cell/screen + 1.5) + 0.5`）渲染眼睛。
+  - 玩家箱子出现在普通箱子内部/普通父层里：在**该玩家箱子自己的 cell** 上以**低透明度**（`-log10(cell/screen + 15) + 1.5`）渲染眼睛。
+- 普通玩家在普通箱子里时，可以在父箱子 cell 上叠加低透明度 phantom 眼睛；玩家箱子本身不叠加到父箱，避免重复。
+- 只为 `DrawIsPlayer` / `Possessable` 的块画脸；普通箱子/墙不画。
 
 ### 4.5 ∞/ε 符号
 
 - `InfSymbolArt.Draw(block, cellRect, cloneFade=false)` 严格按 3.1：
   - 选择 `InfParticleOutlineTex`（ε）或 `InfParticleTex`（∞）；
-  - `count` 由 `SomeInfEnterNum+1` 或 `infExitBlocks.IndexOf+1` 计算；
+  - `count` 由 `SomeInfEnterNum+1` 或 `infExitBlocks.IndexOf+1` 计算；索引缺失时至少画 1 个；
   - `alpha = -log10(((w+h)/2)/Screen.height + 0.5) + 0.22`；
   - `count==1`：0.9 cell 居中；`count>1`：1.8× 缩放、纵向堆叠、间距公式；
   - 严格按原公式绘制，**不要自行换行/缩放**；公式矩形虽略大于单元格，但纹理透明边距让可见符号保持在格内。不要把符号裁到单元格内部；只由地图面板统一裁剪。
+- **∞/ε 箱子**：符号绘制在**整个箱子 cell** 上（不是只画在内容区），位于内容/边框之后，半透明覆盖整个箱子。
 - `DrawBlock` 的符号层在内容/边框之后；多重无限全部绘制，不合并。
 
 ### 4.6 菜单与文案
@@ -245,14 +249,15 @@ v2 的空格用固定 `EmptyCol` 灰色填充，这是示意图做法，v3 必�
 
 ## 6. 验收标准
 
-1. **墙**：任意关卡地图中的墙与游戏内截图对照，颜色/纹理/连接边/阴影一致；不再出现黑色墙。
-2. **箱子**：能看到内部内容；嵌套箱子递归显示（至少 3 层）；翻转箱子的内容/边框方向正确；不出现无限递归/卡顿。
-3. **玩家**：带眼睛/嘴巴/朝向；翻转与 eye offset 正确；箱子/墙不画脸。
+1. **墙**：任意关卡地图中的墙与游戏内截图对照，颜色/纹理/连接边/阴影一致；放大到 `cell >= 256` 时四象限必须来自 `Autotile.quads`，不能再出现四个相同“下-右”角。
+2. **箱子**：能看到内部内容；嵌套箱子递归显示（至少 3 层）；翻转箱子的内容/边框方向正确；不出现无限递归/卡顿；**箱子外黑色、箱内背景有色**；框线/网格线随缩放动态变粗变细。
+3. **玩家**：带眼睛/嘴巴/朝向；翻转与 eye offset 正确；箱子/墙不画脸；玩家箱子在自身层级覆盖整个箱子（高透明度），在普通箱子内只在该箱子 cell（低透明度）。
 4. **∞/ε**：
    - ε 使用 `InfParticleOutlineTex`，∞ 使用 `InfParticleTex`；
    - 单个符号 0.9 cell；多个符号按 `1.8×/堆叠/间距` 公式缩小并纵向排列；
    - 透明度随 cell/screen 高度变化；多重无限符号数量正确；
    - 不自行换行/缩放/裁到格子；可见符号保持在格内（纹理透明边距）；
+   - **整个 ∞/ε 箱子 cell 覆盖半透明符号**，不只在内容区；
    - 与游戏内同位置截图并排对照，布局/透明度可辨认一致。
 5. **空格/背景**：空格不再固定深灰；底色随该层出口块的游戏背景色变化；箱子内部空格与子层背景一致。
 6. **菜单**：标题为“进入∞/ε”；条目 `ε #n`/`∞ #n`；未生成项二次确认；不再出现“进入无限区”/“新建”。

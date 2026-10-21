@@ -1504,6 +1504,13 @@ namespace PPBTool
                 }
             }
 
+            Block exit = LevelGraph.ExitBlockOf(level);
+            if (exit != null && exit.SubLevel == level && (exit.IsPlayer || exit.DrawIsPlayer))
+            {
+                int faceCell = Mathf.RoundToInt(Mathf.Min(canvas.width, canvas.height));
+                DrawFaceArt(new Rect(0f, 0f, canvas.width, canvas.height), exit, faceCell, true);
+            }
+
             if (landingValid)
             {
                 int row = level.height - 1 - landingY;
@@ -1734,7 +1741,7 @@ namespace PPBTool
 
             if (block.IsPlayer)
             {
-                DrawPlayerArt(r, block, cell);
+                DrawPlayerArt(r, block, cell, depth);
             }
             else if (block.SubLevel != null)
             {
@@ -1754,14 +1761,19 @@ namespace PPBTool
 
             if (cell >= 256f && texWallBig != null && texWallBig.Length > 0)
             {
-                Texture[] big = flip && texWallBigFlip != null ? texWallBigFlip : texWallBig;
-                float hw = r.width * 0.5f;
-                float hh = r.height * 0.5f;
-                DrawWallQuad(big, block.WallBigTL, new Rect(r.x, r.y, hw, hh), color);
-                DrawWallQuad(big, block.WallBigTR, new Rect(r.x + hw, r.y, hw, hh), color);
-                DrawWallQuad(big, block.WallBigBL, new Rect(r.x, r.y + hh, hw, hh), color);
-                DrawWallQuad(big, block.WallBigBR, new Rect(r.x + hw, r.y + hh, hw, hh), color);
-                return;
+                int quadIndex = flip ? block.WallTileIndexFlipH : block.WallTileIndex;
+                if (Autotile.quads != null && quadIndex >= 0 && quadIndex < Autotile.quads.Length)
+                {
+                    Autotile.Quad quad = Autotile.quads[quadIndex];
+                    Texture[] big = flip && texWallBigFlip != null ? texWallBigFlip : texWallBig;
+                    float hw = r.width * 0.5f;
+                    float hh = r.height * 0.5f;
+                    DrawWallQuad(big, quad.TL, new Rect(r.x, r.y, hw, hh), color);
+                    DrawWallQuad(big, quad.TR, new Rect(r.x + hw, r.y, hw, hh), color);
+                    DrawWallQuad(big, quad.BL, new Rect(r.x, r.y + hh, hw, hh), color);
+                    DrawWallQuad(big, quad.BR, new Rect(r.x + hw, r.y + hh, hw, hh), color);
+                    return;
+                }
             }
 
             Texture[] tiles = flip && texWallTilesFlip != null ? texWallTilesFlip : texWallTiles;
@@ -1815,18 +1827,28 @@ namespace PPBTool
                 DrawBoxContents(r, block, sub, cell, depth);
             }
 
-            if (sub != null && Prefs.Grid)
+            if (sub != null)
             {
                 DrawBoxGrid(r, block, sub, color);
             }
 
             DrawBoxBorder(r, block, sub, cell);
+            if (sub != null && GameState.Player != null
+                && GameState.Player.OuterLevel == sub
+                && GameState.Player.SubLevel == null)
+            {
+                DrawFaceArt(r, GameState.Player, cell, false);
+            }
+
             DrawInfSymbols(r, block, cell);
         }
 
         private void DrawBoxGrid(Rect r, Block block, Level sub, Color color)
         {
-            float line = Mathf.Max(1f, r.width * 0.02f);
+            float boxAvg = (r.width + r.height) * 0.5f;
+            float subAvg = (sub.width + sub.height) * 0.5f;
+            float scale = boxAvg / Mathf.Max(1f, subAvg);
+            float line = GameBorderThickness(scale * 0.6f, scale * 0.6f);
             Color grid = Color.Lerp(color, Color.black, 0.42f);
             grid.a = 0.65f;
             for (int i = 1; i < sub.width; i++)
@@ -1880,7 +1902,7 @@ namespace PPBTool
 
         private void DrawBoxBorder(Rect r, Block block, Level sub, int cell)
         {
-            float thickness = Mathf.Clamp(cell * 0.055f, 1f, 4f);
+            float thickness = GameBorderThickness(r.width, r.height);
             Color border = block.borderColor;
             if (border.a <= 0.01f)
             {
@@ -1908,21 +1930,26 @@ namespace PPBTool
             }
         }
 
-        private void DrawPlayerArt(Rect r, Block block, int cell)
+        private void DrawPlayerArt(Rect r, Block block, int cell, int depth)
         {
-            Color color = block.SubLevel != null
-                ? GameBlockColor(block, cell)
-                : GamePlayerColor(block, cell);
+            if (block.SubLevel != null)
+            {
+                DrawBoxArt(r, block, cell, depth);
+                DrawFaceArt(r, block, cell, false);
+                return;
+            }
+
+            Color color = GamePlayerColor(block, cell);
             Fill(r, color);
-            DrawFaceArt(r, block, cell);
+            DrawFaceArt(r, block, cell, false);
             DrawInfSymbols(r, block, cell);
         }
 
-        private void DrawFaceArt(Rect r, Block block, int cell)
+        private void DrawFaceArt(Rect r, Block block, int cell, bool playerBoxSurface)
         {
             float fraction = cell / Mathf.Max(1f, Screen.height);
             float alpha = -Mathf.Log10(fraction + 15f) + 1.5f;
-            if (block.SubLevel != null && !block.SubLevel.FilledWithWalls)
+            if (playerBoxSurface)
             {
                 alpha = -Mathf.Log10(fraction + 1.5f) + 0.5f;
             }
@@ -2022,20 +2049,37 @@ namespace PPBTool
             if (block.IsSomeInfEnterBlock)
             {
                 texture = texInfOutline;
-                count = block.SomeInfEnterNum + 1;
+                count = Mathf.Max(1, block.SomeInfEnterNum + 1);
             }
-            else if (block.IsSomeInfExitBlock && block.SubLevel != null && block.SubLevel.infExitBlocks != null)
+            else if (block.IsSomeInfExitBlock && block.SubLevel != null)
             {
                 texture = texInf;
-                count = block.SubLevel.infExitBlocks.IndexOf(block) + 1;
+                int index = block.SubLevel.infExitBlocks != null
+                    ? block.SubLevel.infExitBlocks.IndexOf(block)
+                    : -1;
+                count = index >= 0 ? index + 1 : 1;
             }
             else
             {
                 return;
             }
 
-            if (texture == null || count <= 0)
+            if (count <= 0)
             {
+                return;
+            }
+
+            if (texture == null)
+            {
+                string glyph = block.IsSomeInfEnterBlock ? "ε" : "∞";
+                int shown = Mathf.Min(count, 4);
+                for (int i = 0; i < shown; i++)
+                {
+                    GUI.Label(
+                        new Rect(r.x, r.y + r.height * i / shown, r.width, r.height / shown),
+                        glyph,
+                        centerLabelStyle);
+                }
                 return;
             }
 
@@ -2157,6 +2201,13 @@ namespace PPBTool
             }
 
             return GameBlockColor(owner, 24);
+        }
+
+        private static float GameBorderThickness(float width, float height)
+        {
+            float value = Mathf.Min(width, height) / 30f;
+            float max = Mathf.Min(Screen.width, Screen.height) * 0.00508f;
+            return Mathf.Max(Mathf.Round(Mathf.Clamp(value, 1f, max)), 1f);
         }
 
         private static float WallBrightness(float fraction)
@@ -2360,12 +2411,7 @@ namespace PPBTool
 
         private Color MapBackground(Level level)
         {
-            if (level.InfZone)
-            {
-                return VoidBg;
-            }
-
-            return LevelBackgroundColor(level);
+            return Color.black;
         }
 
         private void HandleMapInput(Rect canvas, Level level, float originX, float originY, int cell)
