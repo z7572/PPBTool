@@ -446,6 +446,102 @@ Infinite Exit ×1
 - **树/引用 chooser 的标签**：
   - 显示 `Target` 层名、父层 `(x,y)`、`grid/hidden overlap`、`primary/clone/inf`，避免两个同格引用不可区分。
 
+### 5.8 外层箱子视图与“无限缩放”（扩展设计，非 v4 必需）
+
+**结论：能做，但需要把当前“单层视图”升级为“引用链视图”。**
+
+当前 v3：
+
+- 只渲染 `selectedNode.Level` 一层；
+- 箱子内容向内递归（`DrawBoxContents`），但不向**外**画当前层的父箱；
+- `zoom` 限制 0.1–10，`cell` 限制 2–400px；
+- 没有 outer reference path，也没有跨层 LOD。
+
+#### 5.8.1 引用链视图
+
+新增 `ViewPath`：
+
+```csharp
+List<LevelReference> outerPath; // 从当前层向外：current -> parent ref -> ...
+```
+
+- 从当前 Level 选一个 `CanBack` 引用（优先 stack / DisplayParent / chooser）；
+- 沿 `Parent` 继续向上，直到：
+  - `OuterLevel == null`（root owner，停止）；
+  - 没有任何 `CanBack` 引用（停止）；
+  - 遇到已访问 Level（引用环，停止并标记 cycle）；
+  - 达到深度上限（例如 32）。
+- 最外层 Level 作为渲染根；它里面的路径箱子递归进入下一层，直到当前 Level。
+- 当前 Level 的网格加高亮边框；外层只显示、不响应传送点击。
+- 面包屑：
+  `Outermost > ... > Current`，点击可切换 focus。
+- 多引用/重叠引用：用 Reference chooser 选路径；隐藏 overlap 只显示不响应 map 点击。
+- 无引用/只有 root owner：outerPath 为空，不画外框，保持当前单层视图。
+
+#### 5.8.2 渲染方式
+
+复用现有 `DrawRealCell`/`DrawBoxArt`/`DrawBoxContents`：
+
+```text
+RenderLevel(outermost, viewportRect, pathIndex)
+  for each visible cell:
+      DrawRealCell(...)
+      if cell is the path box and pathIndex < outerPath.Count:
+          childRect = cellRect
+          RenderLevel(child, childRect, pathIndex+1)
+```
+
+- 从最外层向内递归；当前层就是路径上的某个 child。
+- 非路径箱子仍按普通箱子递归显示内容，但受 LOD/深度限制。
+- 外层 Level 的 `blockList`/`floorList` 直接用现有渲染器。
+- 当前层边界、路径箱边界用高亮描边区分。
+- 外层 cell 点击不传送；只有当前层 cell 保留现有交互。
+
+#### 5.8.3 “无限缩放”的现实定义
+
+- 去掉 v3 的硬编码 `zoom 0.1–10` 与 `cell 2–400`。
+- 使用连续 world scale，范围设为实际可用：
+  - 放大：`cell` 可到 4096px（受 float/纹理/性能限制）；
+  - 缩小：`cell` 可到 0.25px（低于 2px 时进入 LOD 简化）。
+- 缩放中心仍是鼠标；`Fit` 提供两种：
+  - `Fit current`：适应当前层；
+  - `Fit outer`：适应最外层链。
+- **“无限”指没有固定档位/固定上限的连续缩放体验**，不是数学意义上的无限细节：
+  - 放大到一定程度后，箱子内部内容由像素阈值停止递归；
+  - 缩小到一定程度后，外层继续出现，但 cells 进入 LOD；
+  - 引用环/深度上限会截断。
+- LOD：
+  - `cell < 2px`：只画色块/边框，不画内容、符号、文字；
+  - `cell < 6px`：不画箱子内部细节；
+  - `cell > 400px`：正常画大墙四象限；更高时继续放大纹理；
+  - 只遍历 viewport 内 cells；外层/内层都做 culling。
+- 缩放范围/深度作为配置（可选）：
+  ```ini
+  [View]
+  MaxOuterDepth = 32
+  MinCellPixels = 0.25
+  MaxCellPixels = 4096
+  ```
+
+#### 5.8.4 风险
+
+1. **引用环**：Box1↔Box2 会形成无限外层/内层；必须用 `ViewPath` 深度/已访问集合截断，不能纯递归。
+2. **多引用**：同一层有多个外层箱子；必须由 stack/chooser 选一条路径，否则无法定义“外层”。
+3. **重叠引用**：隐藏 overlap 不能画成可见箱子；只能作为引用列表/路径选项。
+4. **性能**：外层链 + 内层递归；只画 viewport，LOD 必须默认开启。
+5. **内存/精度**：超大 cell、深层路径、float 精度；设置实际可用上下限。
+6. **交互歧义**：外层 cell 不应触发传送；当前层高亮，避免用户误点。
+
+#### 5.8.5 验收
+
+- 当前层有真实父箱：zoom out 能看到父层和当前层所在的箱子；
+- 当前层只有 void 引用：能 zoom out 到 void；
+- 无引用/root owner：不画外框；
+- Box1↔Box2：不无限递归，路径在环处停止并提示；
+- 多引用：chooser 切换路径后外框随之变化；
+- zoom 连续、无固定 10×/400px 卡死；LOD 下不卡顿；
+- 当前层交互仍是原来的点击/传送。
+
 ## 6. 验收标准
 
 1. **引用/Back**：
