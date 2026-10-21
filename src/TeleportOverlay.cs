@@ -2156,7 +2156,7 @@ namespace PPBTool
                 return new Color(0.06f, 0.07f, 0.09f, 1f);
             }
 
-            return Color.Lerp(GameBlockColor(owner, 24), Color.black, 0.45f);
+            return GameBlockColor(owner, 24);
         }
 
         private static float WallBrightness(float fraction)
