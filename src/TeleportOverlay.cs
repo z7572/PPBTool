@@ -1886,7 +1886,64 @@ namespace PPBTool
                 Border(r, new Color(1f, 0.25f, 0.22f, 0.9f), 1f);
             }
 
+            DrawWallCounter(r, block, cell);
             DrawFlipShineArt(r, block, cell);
+        }
+
+        private void DrawWallCounter(Rect r, Block block, int cell)
+        {
+            if (block.numRequired == 0 || cell < 8)
+            {
+                return;
+            }
+
+            Block owner = LevelGraph.ExitBlockOf(block.OuterLevel);
+            if (owner == null || block.OuterLevel == null)
+            {
+                return;
+            }
+
+            float fraction = cell * (block.OuterLevel.width + block.OuterLevel.height) * 0.5f
+                / Mathf.Max(1f, Screen.height);
+            float val = Mathf.Max(owner.val, 0.4f);
+            val *= -0.4f * Mathf.Log(Mathf.Max(fraction, 0.0001f), 20f) + 0.8f;
+            val *= 0.25f;
+            Color color = Hsv(owner.hue, owner.sat, val);
+            color.a = 1f;
+            color.r = Mathf.Min(1f, color.r * 1.25f);
+            color.g = Mathf.Min(1f, color.g * 1.25f);
+            color.b = Mathf.Min(1f, color.b * 1.25f);
+
+            int solved = block.numSolved;
+            if (block.Counting)
+            {
+                solved -= block.CountingDelta;
+            }
+
+            int fontSize = Mathf.Clamp(Mathf.RoundToInt(cell * 0.42f), 7, 24);
+            int oldSize = tinyCenterStyle.fontSize;
+            Color oldText = tinyCenterStyle.normal.textColor;
+            tinyCenterStyle.fontSize = fontSize;
+            tinyCenterStyle.normal.textColor = color;
+            float h = cell;
+            GUI.Label(
+                new Rect(r.center.x - h, r.center.y - h - h * 0.26f, h * 2f, h * 2f),
+                solved.ToString(),
+                tinyCenterStyle);
+            GUI.Label(
+                new Rect(r.center.x - h, r.center.y - h + h * 0.26f, h * 2f, h * 2f),
+                block.numRequired.ToString(),
+                tinyCenterStyle);
+            tinyCenterStyle.fontSize = oldSize;
+            tinyCenterStyle.normal.textColor = oldText;
+
+            float barW = h * 0.6f;
+            float barH = Mathf.Max(1f, h * 0.05f);
+            Color bar = color;
+            bar.r *= 0.5f;
+            bar.g *= 0.5f;
+            bar.b *= 0.5f;
+            Fill(new Rect(r.center.x - barW * 0.5f, r.center.y - barH * 0.5f, barW, barH), bar);
         }
 
         private void DrawWallQuad(Texture[] textures, int index, Rect r, Color color)
