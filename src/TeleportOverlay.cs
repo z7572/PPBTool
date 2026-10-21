@@ -1949,18 +1949,16 @@ namespace PPBTool
                 ? selectedColorOwner
                 : levelOwner;
             int bgCell = Mathf.Max(24, Mathf.RoundToInt(Mathf.Min(gridW, gridH)));
-            if (visualOwner != null && visualOwner.OuterLevel != null)
+            if (level.InfZone)
+            {
+                // The void itself is empty black space; the boxes inside it keep
+                // their own colors. Do not paint the void with its exit box color.
+                Fill(new Rect(localX, localY, gridW, gridH), Color.black);
+            }
+            else if (visualOwner != null && visualOwner.OuterLevel != null)
             {
                 Color levelBg = GameBlockColor(visualOwner, bgCell);
                 Fill(new Rect(localX, localY, gridW, gridH), levelBg);
-                DrawLevelGrid(level, visualOwner, localX, localY, cell, gridW, gridH);
-
-                if (World.InHub())
-                {
-                    GUI.BeginGroup(new Rect(localX, localY, gridW, gridH));
-                    DrawHubLines(level, visualOwner, cell, cell, false);
-                    GUI.EndGroup();
-                }
             }
             else
             {
@@ -1968,6 +1966,14 @@ namespace PPBTool
                 // exit block still need a level background; only the space outside
                 // the level grid (and outside a box) stays black.
                 Fill(new Rect(localX, localY, gridW, gridH), ResolveLevelColor(level, bgCell));
+            }
+
+            DrawLevelGrid(level, visualOwner, localX, localY, cell, gridW, gridH);
+            if (visualOwner != null && World.InHub())
+            {
+                GUI.BeginGroup(new Rect(localX, localY, gridW, gridH));
+                DrawHubLines(level, visualOwner, cell, cell, false);
+                GUI.EndGroup();
             }
 
             for (int row = firstRow; row <= lastRow; row++)
@@ -2272,7 +2278,7 @@ namespace PPBTool
             Block colorSource = block.val > 0.0001f || block.sat > 0.0001f
                 ? block
                 : (owner ?? block);
-            bool possessedWall = block.IsPlayer && block.Possessable;
+            bool possessedWall = block.IsPlayer && !block.IsPlayerStart;
             Color color = block.IsPlayer && !possessedWall
                 ? GamePlayerColor(block, cell)
                 : GameWallColor(colorSource, cell);
@@ -2320,7 +2326,7 @@ namespace PPBTool
             DrawFlipShineArt(r, block, cell);
 
             // Game: DrawWall(...); if (block.Possessable || block.IsPlayer) DrawFace(...).
-            if (block.Possessable || block.IsPlayer)
+            if (block.Possessable || block.IsPlayer || block.DrawIsPlayer)
             {
                 DrawFaceArt(r, block, cell);
             }
@@ -2440,6 +2446,11 @@ namespace PPBTool
                 DrawFaceArt(r, block, cell);
             }
 
+            if (block.IsPlayer)
+            {
+                DrawFaceArt(r, block, cell);
+            }
+
             DrawInfSymbols(r, block, cell, depth);
         }
 
@@ -2449,18 +2460,27 @@ namespace PPBTool
             float levelAvg = (level.width + level.height) * 0.5f;
             float scale = ((gridW + gridH) * 0.5f) / Mathf.Max(1f, levelAvg);
             float line = GameBorderThickness(scale * 0.6f, scale * 0.6f);
-            float hue;
-            float sat;
-            float val;
-            GameBlockHsv(owner, 24, out hue, out sat, out val);
-            val = val * 0.65f - 0.075f;
-            if (LevelGraph.IsCloneBox(owner))
+            Color grid;
+            if (owner != null)
             {
-                val += 0.075f;
-            }
+                float hue;
+                float sat;
+                float val;
+                GameBlockHsv(owner, 24, out hue, out sat, out val);
+                val = val * 0.65f - 0.075f;
+                if (LevelGraph.IsCloneBox(owner))
+                {
+                    val += 0.075f;
+                }
 
-            Color grid = Hsv(hue, sat, val);
-            grid.a = 0.65f;
+                grid = Hsv(hue, sat, val);
+                grid.a = 0.65f;
+            }
+            else
+            {
+                grid = Color.Lerp(ResolveLevelColor(level, 24), Color.black, 0.45f);
+                grid.a = 0.55f;
+            }
             for (int x = 1; x < level.width; x++)
             {
                 Fill(new Rect(originX + x * cell, originY, line, gridH), grid);
