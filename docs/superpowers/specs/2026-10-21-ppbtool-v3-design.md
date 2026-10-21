@@ -1,7 +1,7 @@
 # PPBTool v3 — 真实方块渲染、∞/ε 符号与渲染管线替换
 
 日期：2026-10-21
-状态：**已实施（v3 first pass）**
+状态：**v3 已实施，待实机视觉验收**（交接见 `docs/HANDOFF-v3.md`）
 基线：v2 已提交（`76f4e23`），v3 实施后 `dotnet build -c Release` 0 warning / 0 error
 前置文档：[v2 设计规格](2026-10-21-ppbtool-v2-design.md)
 
