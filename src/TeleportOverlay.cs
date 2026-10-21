@@ -1949,14 +1949,11 @@ namespace PPBTool
                 ? selectedColorOwner
                 : levelOwner;
             int bgCell = Mathf.Max(24, Mathf.RoundToInt(Mathf.Min(gridW, gridH)));
-            if (visualOwner != null)
+            if (visualOwner != null && visualOwner.OuterLevel != null)
             {
-                if (visualOwner.OuterLevel != null)
-                {
-                    Color levelBg = GameBlockColor(visualOwner, bgCell);
-                    Fill(new Rect(localX, localY, gridW, gridH), levelBg);
-                    DrawLevelGrid(level, visualOwner, localX, localY, cell, gridW, gridH);
-                }
+                Color levelBg = GameBlockColor(visualOwner, bgCell);
+                Fill(new Rect(localX, localY, gridW, gridH), levelBg);
+                DrawLevelGrid(level, visualOwner, localX, localY, cell, gridW, gridH);
 
                 if (World.InHub())
                 {
@@ -2045,13 +2042,19 @@ namespace PPBTool
                 case Floor.FloorType.PlayerButton:
                     DrawButtonBorder(r, color);
                     Color eyeTint = Color.Lerp(color, Color.white, 0.45f);
-                    eyeTint.a = color.a;
+                    eyeTint.a = 1f;
+                    // The eye texture has its own alpha; draw twice so the icon's
+                    // effective opacity matches the opaque button border.
+                    DrawGameTexture(r, texEyesLarge, texEyesSmall, eyeTint, 1f);
                     DrawGameTexture(r, texEyesLarge, texEyesSmall, eyeTint, 1f);
                     break;
 
                 case Floor.FloorType.Info:
                     DrawButtonBorder(r, color);
-                    DrawGameTexture(r, texInfo, texInfo, new Color(1f, 1f, 1f, color.a), 0.9f);
+                    Color infoTint = Color.white;
+                    infoTint.a = 1f;
+                    DrawGameTexture(r, texInfo, texInfo, infoTint, 0.9f);
+                    DrawGameTexture(r, texInfo, texInfo, infoTint, 0.9f);
                     break;
 
                 case Floor.FloorType.LevelPortal:
@@ -2269,7 +2272,10 @@ namespace PPBTool
             Block colorSource = block.val > 0.0001f || block.sat > 0.0001f
                 ? block
                 : (owner ?? block);
-            Color color = GameWallColor(colorSource, cell);
+            bool possessedWall = block.IsPlayer && block.Possessable;
+            Color color = block.IsPlayer && !possessedWall
+                ? GamePlayerColor(block, cell)
+                : GameWallColor(colorSource, cell);
             bool flip = block.FlipH;
 
             if (cell >= 256f && texWallBig != null && texWallBig.Length > 0)
@@ -2285,6 +2291,10 @@ namespace PPBTool
                     DrawWallQuad(big, quad.TR, new Rect(r.x + hw, r.y, hw, hh), color);
                     DrawWallQuad(big, quad.BL, new Rect(r.x, r.y + hh, hw, hh), color);
                     DrawWallQuad(big, quad.BR, new Rect(r.x + hw, r.y + hh, hw, hh), color);
+                    if (block.Possessable || block.IsPlayer)
+                    {
+                        DrawFaceArt(r, block, cell);
+                    }
                     return;
                 }
             }
