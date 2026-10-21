@@ -1508,7 +1508,7 @@ namespace PPBTool
                         continue;
                     }
 
-                    DrawRealCell(level, x, y, r, cell, 0);
+                    DrawRealCell(level, x, y, r, cell, 0, levelOwner);
                 }
             }
 
@@ -1657,16 +1657,17 @@ namespace PPBTool
 
         private void DrawPortal(Rect r, Floor floor, int cell)
         {
+            Color hard = PortalHardColor(floor.Hard);
+            if (hard.a > 0.01f)
+            {
+                Fill(r, hard);
+            }
+
             if (portalArt)
             {
                 Texture texture = GetPortalTexture(floor.SceneName);
                 if (texture != null)
                 {
-                    if (floor.Hard != 0)
-                    {
-                        Fill(r, new Color(0.65f, 0.22f, 0.22f, 0.55f));
-                    }
-
                     Color tint = !floor.Unlocked
                         ? new Color(0.45f, 0.45f, 0.45f, 1f)
                         : (floor.Won ? Color.white : new Color(0.70f, 0.82f, 1f, 1f));
@@ -1681,12 +1682,27 @@ namespace PPBTool
                 }
             }
 
-            Fill(Centered(r, Mathf.Min(r.width, r.height) * 0.55f), FloorPortal);
-            Border(Centered(r, Mathf.Min(r.width, r.height) * 0.55f),
-                new Color(0.9f, 0.85f, 1f, 0.9f), 1f);
+            var marker = Centered(r, Mathf.Min(r.width, r.height) * 0.55f);
+            Fill(marker, hard.a > 0.01f ? Color.Lerp(hard, Color.white, 0.18f) : FloorPortal);
+            Border(marker, hard.a > 0.01f ? Color.white : new Color(0.9f, 0.85f, 1f, 0.9f), 1f);
             if (floor.Unlocked && !floor.Won && cell >= 10)
             {
                 Fill(Centered(r, cell * 0.16f), Color.white);
+            }
+        }
+
+        private static Color PortalHardColor(int hard)
+        {
+            switch (hard)
+            {
+                case 1:
+                    // Particle.hardPortalColor: h=0, s=0.9, v=0.8, a=1
+                    return Color.HSVToRGB(0f, 0.9f, 0.8f);
+                case 2:
+                    // Particle.visualPortalColor: h=0.53, s=1, v=1, a=1
+                    return Color.HSVToRGB(0.53f, 1f, 1f);
+                default:
+                    return Color.clear;
             }
         }
 
@@ -1743,7 +1759,7 @@ namespace PPBTool
             Fill(new Rect(r.center.x - w * 0.60f, r.center.y + h * 0.35f, w * 1.20f, h * 0.15f), color);
         }
 
-        private void DrawRealCell(Level level, int x, int y, Rect r, int cell, int depth)
+        private void DrawRealCell(Level level, int x, int y, Rect r, int cell, int depth, Block parentBox)
         {
             Floor floor = level.floors[x, y];
             Block block = level.blocks[x, y];
@@ -1767,13 +1783,13 @@ namespace PPBTool
             }
             else
             {
-                DrawWallArt(r, block, cell);
+                DrawWallArt(r, block, cell, parentBox);
             }
         }
 
-        private void DrawWallArt(Rect r, Block block, int cell)
+        private void DrawWallArt(Rect r, Block block, int cell, Block parentBox)
         {
-            Block owner = LevelGraph.ExitBlockOf(block.OuterLevel);
+            Block owner = parentBox ?? LevelGraph.ExitBlockOf(block.OuterLevel);
             Color color = GameWallColor(owner, cell);
             bool flip = block.FlipH;
 
@@ -1810,6 +1826,8 @@ namespace PPBTool
             {
                 Border(r, new Color(1f, 0.25f, 0.22f, 0.9f), 1f);
             }
+
+            DrawFlipShineArt(r, block, cell);
         }
 
         private void DrawWallQuad(Texture[] textures, int index, Rect r, Color color)
@@ -1850,6 +1868,7 @@ namespace PPBTool
             }
 
             DrawBoxBorder(r, block, sub, cell);
+            DrawFlipShineArt(r, block, cell);
             bool parentVoid = block.OuterLevel != null && block.OuterLevel.InfZone;
             if (!parentVoid && sub != null && GameState.Player != null
                 && GameState.Player.OuterLevel == sub
@@ -1954,7 +1973,7 @@ namespace PPBTool
                 {
                     int drawX = block.FlipH ? sub.width - 1 - x : x;
                     var cr = new Rect(drawX * cw, row * ch, cw, ch);
-                    DrawRealCell(sub, x, y, cr, Mathf.RoundToInt(Mathf.Min(cw, ch)), depth + 1);
+                    DrawRealCell(sub, x, y, cr, Mathf.RoundToInt(Mathf.Min(cw, ch)), depth + 1, block);
                 }
             }
 
@@ -2176,9 +2195,57 @@ namespace PPBTool
             }
         }
 
-        private void DrawInfSymbols(Rect r, Block block, int cell)
+        private void DrawFlipShineArt(Rect r, Block block, int cell)
         {
-            Texture texture;
+            if (!block.FlipH && block.SpecialEffect != 2 && block.SpecialEffect != 3)
+            {
+                return;
+            }
+
+            if (block.SubLevel != null && block.SubLevel.FilledWithWalls)
+            {
+                return;
+            }
+
+            float fraction = cell / Mathf.Max(1f, Screen.height);
+            float alpha = Mathf.Min(-Mathf.Log10(fraction + 0.5f) + 0.18f, 0.22f);
+            if (alpha <= 0.01f)
+            {
+                return;
+            }
+
+            float t = (block.MiscAnimT * 0.5f) % 1.3f;
+            if (t >= 1f)
+            {
+                return;
+            }
+
+            if (block.FlipH || block.SpecialEffect == 3)
+            {
+                t = 1f - t;
+            }
+
+            float band = 0.4f * r.width * (t < 0.5f
+                ? QuadIn(t * 2f)
+                : QuadIn(1f - (t - 0.5f) * 2f));
+            float center = Mathf.Lerp(r.x, r.xMax, QuadInOut(QuadInOut(t)));
+            Fill(new Rect(center - band * 0.5f, r.y, band, r.height), new Color(1f, 1f, 1f, alpha));
+        }
+
+        private static float QuadIn(float value)
+        {
+            return value * value;
+        }
+
+        private static float QuadInOut(float value)
+        {
+            return value < 0.5f
+                ? 2f * value * value
+                : 1f - 2f * (1f - value) * (1f - value);
+        }
+
+        private void DrawInfSymbols(Rect r, Block block, int cell)
+        {            Texture texture;
             int count;
             if (block.IsSomeInfEnterBlock)
             {
@@ -2252,6 +2319,7 @@ namespace PPBTool
 
             float fraction = cell / Mathf.Max(1f, Screen.height);
             float val = owner.val * WallBrightness(fraction) * 2f * 1.10f;
+            float sat = owner.sat;
             if (owner.IsSomeInfExitBlock)
             {
                 val *= 0.55f;
@@ -2259,10 +2327,11 @@ namespace PPBTool
             else if (owner.SubLevel != null && LevelGraph.IsCloneBox(owner))
             {
                 val += 0.4f;
+                sat *= 0.82f;
             }
 
             val = Mathf.Clamp(val, 0.22f, 1f);
-            return Hsv(owner.hue, owner.sat, val);
+            return Hsv(owner.hue, sat, val);
         }
 
         private Color GameBlockColor(Block block, int cell)
