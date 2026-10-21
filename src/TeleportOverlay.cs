@@ -2279,12 +2279,21 @@ namespace PPBTool
             // A wall carries its own color; only completely black/invalid walls
             // need the level exit block as a fallback. This also keeps a possessed
             // wall's color instead of painting it as a player square.
-            Block colorSource = block.IsPlayer
-                ? block
-                : (block.val > 0.0001f || block.sat > 0.0001f
-                    ? block
-                    : (owner ?? block));
             bool possessedWall = block.IsPlayer && !block.IsPlayerStart;
+            Block colorSource;
+            if (possessedWall)
+            {
+                // Possessed wall blocks often have grey/zero HSV; use the host
+                // level's wall color so it matches the surrounding walls.
+                colorSource = owner ?? block;
+            }
+            else
+            {
+                colorSource = block.val > 0.0001f || block.sat > 0.0001f
+                    ? block
+                    : (owner ?? block);
+            }
+
             Color color = block.IsPlayer && !possessedWall
                 ? GamePlayerColor(block, cell)
                 : GameWallColor(colorSource, cell);
