@@ -951,12 +951,6 @@ namespace PPBTool
                 return;
             }
 
-            if (config.TeleportPressed())
-            {
-                Close();
-                return;
-            }
-
             if (showInfMenu)
             {
                 return;
@@ -3020,8 +3014,7 @@ namespace PPBTool
                 return true;
             }
 
-            return !level.FilledWithWalls
-                && World.WentToInfZone;
+            return !level.FilledWithWalls;
         }
 
         private void LogInfSymbol(Block block, bool enter, int count, int depth, bool rendered)

@@ -395,16 +395,15 @@ Infinite Exit ×1
    - `<= 0` → **不画**，不要 fallback 1。
 3. **父层可见性**：
    - 非虚空父层：正常画；
-   - 虚空父层：只要玩家已进入无限空间且不是 FilledWithWalls：
+   - 虚空父层：地图是查看器，不依赖玩家当前是否在无限空间：
      ```csharp
      !void.FilledWithWalls
-     && World.WentToInfZone
      ```
-   - 不能把 `Draw.DrawBlocks` 顶层的 `blockList.Count > 1` 直接当成“符号父层可见”条件：`Void 7x7 #2` 这类只有一个 ∞退出箱的虚空，游戏仍会绘制该箱子的符号；实测 `blockList.Count` 可能是 1。`LogInfSymbols` 会记录 `parentBlocks`。
+   - 不要用 `World.WentToInfZone` 或 `blockList.Count > 1` 作为地图符号门槛：从引用选择器进入 void 时玩家还没传送进去，符号也必须立即显示；玩家离开后仍显示。`Void 7x7 #2` 这类只有一个 ∞退出箱的虚空，实测 `blockList.Count` 可能是 1。`LogInfSymbols` 会记录 `parentBlocks`。
    - 不因为 `OuterLevel.InfZone` 一律跳过。
 4. **当前层是箱子内部**：
    - 父箱符号只在父层可见时覆盖到整个 boxRect；
-   - 父层是隐藏虚空/未渲染时不画。
+   - 父层是 FilledWithWalls 时不画；普通虚空/被引用查看的虚空照画。
 5. **纹理缺失**：
    - 不再用文本 `ε/∞` fallback 冒充游戏符号；
    - 只记录诊断，避免“mod 画、游戏不画”。

@@ -132,7 +132,7 @@ Language = auto             ; auto / zh / en
 - 同格重叠箱子只渲染/点击网格 occupant；被覆盖引用仍可 Back/通过引用选择器进入，但地图格点击会打开 occupant。
 - 克隆箱颜色上下文：从地图点击 clone 箱进入其层级时会保留该 clone 作为颜色 owner；从层级树直接打开同一层时没有“从哪个 clone 进入”的信息，会退回 primary exit block 颜色。
 - “后退/前进”是地图视图历史，不改变玩家位置、不写 `UndoManager`；游戏内 Undo/Redo 默认 `Z`/`X`。
-- 无限符号按 `DrawBlocks` 入队条件、`DrawInfEffect` 数量、`DrawStyle`/`iii` 和父层可见性判定；计数 <=0 或纹理缺失时不画，不再用文本 fallback。
+- 无限符号按 `DrawBlocks` 入队条件、`DrawInfEffect` 数量、`DrawStyle`/`iii` 和父层可见性判定；计数 <=0 或纹理缺失时不画，不再用文本 fallback。地图查看 void 时不依赖玩家是否已进入无限空间，离开后也保留符号。
 - 没有引用的层级使用 block/palette/中性色 fallback；不再纯黑。
 - 箱子内部递归到 4 层 / 单箱 1600 格上限；更大或更深时只显示底色/边框，避免卡顿。
 - 玩家表情只复刻眼睛/常见嘴巴；部分 `PlayerOrder` 特殊表情与眨眼相位可能不同。
