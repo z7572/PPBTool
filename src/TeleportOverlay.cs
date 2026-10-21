@@ -213,6 +213,15 @@ namespace PPBTool
             showInfConfirm = false;
             titleStyle = null;
             RebuildGraph(false);
+            if (rows.Count == 0 && hideVoid)
+            {
+                // Never leave the browser unopenable just because a persisted filter
+                // hides every row. Turn it off for this session and retry.
+                hideVoid = false;
+                config.HideVoidBoxes = false;
+                FlattenTree();
+            }
+
             if (rows.Count == 0)
             {
                 Notify(UiText.Get("no_levels"), true);
@@ -955,13 +964,7 @@ namespace PPBTool
                 float width = Mathf.Max(120f, rect.width - x - 130f);
                 GUI.Label(new Rect(x, rect.y + 5f, width, 24f),
                     UiText.Get("level") + ": " + selectedNode.Path, labelStyle);
-                string sub = selectedNode.Subtitle;
-                if (!string.IsNullOrEmpty(selectedNode.Tags))
-                {
-                    sub = "[" + selectedNode.Tags + "]  " + sub;
-                }
-
-                GUI.Label(new Rect(x, rect.y + 31f, width, 20f), sub, smallStyle);
+                GUI.Label(new Rect(x, rect.y + 31f, width, 20f), selectedNode.Subtitle, smallStyle);
             }
 
             if (GUI.Button(new Rect(rect.xMax - 104f, rect.y + 13f, 90f, 30f), UiText.Get("close"), buttonStyle))

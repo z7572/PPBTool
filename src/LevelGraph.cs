@@ -33,7 +33,7 @@ namespace PPBTool
 
         public string Direction
         {
-            get { return Enter ? "∞进入" : "∞退出"; }
+            get { return Enter ? UiText.Get("inf_enter") : UiText.Get("inf_exit"); }
         }
 
         public string TargetLabel
@@ -52,7 +52,11 @@ namespace PPBTool
 
         public string MenuLabel
         {
-            get { return "进入无限区 #" + Index + " → " + TargetLabel; }
+            get
+            {
+                return Direction + " · " + UiText.Get("enter_inf")
+                    + " #" + Index + " → " + TargetLabel;
+            }
         }
 
         public override string ToString()
@@ -334,11 +338,21 @@ namespace PPBTool
                 return null;
             }
 
-            Block fallback = null;
+            bool hasRootOwner = false;
+            Block voidParent = null;
             foreach (Block block in level.BlocksWithThisAsTheirSubLevel)
             {
-                if (block == null || block.OuterLevel == null)
+                if (block == null)
                 {
+                    continue;
+                }
+
+                if (block.OuterLevel == null)
+                {
+                    // The block that created a root level. Every level also gets an
+                    // auto-generated ∞ exit block inside a void, so this owner must keep
+                    // the level at the tree root instead of letting the void adopt it.
+                    hasRootOwner = true;
                     continue;
                 }
 
@@ -347,13 +361,13 @@ namespace PPBTool
                     return block;
                 }
 
-                if (fallback == null)
+                if (voidParent == null)
                 {
-                    fallback = block;
+                    voidParent = block;
                 }
             }
 
-            return fallback;
+            return hasRootOwner ? null : voidParent;
         }
 
         private static string BuildTitle(
