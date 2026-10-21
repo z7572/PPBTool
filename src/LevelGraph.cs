@@ -905,47 +905,6 @@ namespace PPBTool
             return level.width + "x" + level.height;
         }
 
-        /// <summary>Find the level's authored player-start cell, used when the level loads.</summary>
-        public static bool TryFindPlayerStart(Level level, out int x, out int y)
-        {
-            x = 0;
-            y = 0;
-            if (level == null || level.blockList == null)
-            {
-                return false;
-            }
-
-            Block fallback = null;
-            foreach (Block block in level.blockList)
-            {
-                if (block == null || !block.IsPlayerStart || block.OuterLevel != level)
-                {
-                    continue;
-                }
-
-                if (block.PlayerOrderStart == 0)
-                {
-                    x = block.xpos;
-                    y = block.ypos;
-                    return true;
-                }
-
-                if (fallback == null)
-                {
-                    fallback = block;
-                }
-            }
-
-            if (fallback == null)
-            {
-                return false;
-            }
-
-            x = fallback.xpos;
-            y = fallback.ypos;
-            return true;
-        }
-
         /// <summary>True when the player can legally stand on this cell (empty, no portal).</summary>
         public static bool IsWalkableCell(Level level, int x, int y)
         {

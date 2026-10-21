@@ -187,12 +187,6 @@ namespace PPBTool
         private string infMenuTitle = string.Empty;
         private List<InfLink> infMenuLinks = new List<InfLink>();
 
-        private Level landingLevel;
-        private int landingX;
-        private int landingY;
-        private bool landingValid;
-        private bool landingIsSpawn;
-
         public TeleportOverlay(ModConfig config, TeleportService teleporter)
         {
             this.config = config;
@@ -383,8 +377,6 @@ namespace PPBTool
                 forwardHistory.Clear();
                 historyScene = World.currentLevelName;
             }
-
-            landingLevel = null;
 
             graph.Build();
             sceneAtBuild = World.currentLevelName;
@@ -1885,7 +1877,6 @@ namespace PPBTool
 
             Level level = selectedNode.Level;
             EnsureGameArtTextures();
-            EnsureLanding(level);
 
             var detailRect = new Rect(panel.x + 6f, panel.y + 5f, panel.width - 12f, 24f);
             Fill(detailRect, Bar);
@@ -2006,17 +1997,6 @@ namespace PPBTool
                 if (exit.IsSomeInfEnterBlock || exit.IsSomeInfExitBlock)
                 {
                     DrawInfSymbols(boxRect, exit, boxCell, 0);
-                }
-            }
-
-            if (landingValid)
-            {
-                int row = level.height - 1 - landingY;
-                var landing = new Rect(localX + landingX * cell, localY + row * cell, cell, cell);
-                if (Overlaps(landing, localCanvas) && !(landingX == playerX && landingY == playerY))
-                {
-                    Ring(landing, TargetCol, Mathf.Max(2f, cell * 0.08f));
-                    Cross(landing, TargetCol);
                 }
             }
 
@@ -3432,12 +3412,6 @@ namespace PPBTool
                 info += " · " + UiText.Get("legend_target");
             }
 
-            if (landingValid)
-            {
-                info += " · " + UiText.Get(landingIsSpawn ? "spawn" : "landing")
-                    + " (" + landingX + "," + landingY + ")";
-            }
-
             if (block != null && block.SubLevel != null)
             {
                 string attributes = BlockAttributes(block);
@@ -3467,26 +3441,6 @@ namespace PPBTool
             }
 
             return flags;
-        }
-
-        private void EnsureLanding(Level level)
-        {
-            if (landingLevel == level)
-            {
-                return;
-            }
-
-            landingLevel = level;
-            if (LevelGraph.TryFindPlayerStart(level, out landingX, out landingY))
-            {
-                landingValid = true;
-                landingIsSpawn = true;
-                return;
-            }
-
-            landingIsSpawn = false;
-            landingValid = LevelGraph.TryFindNearestWalkable(
-                level, level.width / 2, level.height / 2, out landingX, out landingY);
         }
 
         private static Color FloorBaseColor(Floor.FloorType type)
