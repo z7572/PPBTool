@@ -19,6 +19,48 @@ namespace PPBTool
         }
     }
 
+    /// <summary>One of a level's infinity-enter / infinity-exit links.</summary>
+    internal sealed class InfLink
+    {
+        public bool Enter;
+        public int Index;
+        public Level Source;
+        public Block Block;
+        public Level Container;
+        public Level Target;
+        public int TargetX;
+        public int TargetY;
+
+        public string Direction
+        {
+            get { return Enter ? "∞进入" : "∞退出"; }
+        }
+
+        public string TargetLabel
+        {
+            get
+            {
+                string target = LevelGraph.DescribeLevel(Target);
+                if (!Enter && Target != null)
+                {
+                    target += " @ (" + TargetX + "," + TargetY + ")";
+                }
+
+                return target;
+            }
+        }
+
+        public string MenuLabel
+        {
+            get { return "进入无限区 #" + Index + " → " + TargetLabel; }
+        }
+
+        public override string ToString()
+        {
+            return MenuLabel;
+        }
+    }
+
     /// <summary>One level in the scene hierarchy (a hub area, a room, or a box interior).</summary>
     internal sealed class LevelNode
     {
@@ -27,6 +69,7 @@ namespace PPBTool
         public LevelNode ParentNode;
         public string Title = string.Empty;
         public string Subtitle = string.Empty;
+        public string Tags = string.Empty;
         public int Depth;
         public bool ContainsPlayer;
         public List<LevelNode> Children = new List<LevelNode>();
@@ -60,6 +103,8 @@ namespace PPBTool
         private readonly List<LevelNode> roots = new List<LevelNode>();
         private readonly Dictionary<Level, LevelNode> nodesByLevel =
             new Dictionary<Level, LevelNode>();
+        private readonly Dictionary<Level, int> infInCounts = new Dictionary<Level, int>();
+        private readonly Dictionary<Level, int> infOutCounts = new Dictionary<Level, int>();
 
         public string SceneLabel = string.Empty;
 
@@ -75,11 +120,24 @@ namespace PPBTool
             get { return nodesByLevel.Values; }
         }
 
+        public LevelNode FindNode(Level level)
+        {
+            if (level == null)
+            {
+                return null;
+            }
+
+            LevelNode node;
+            return nodesByLevel.TryGetValue(level, out node) ? node : null;
+        }
+
         /// <summary>Rebuild the hierarchy from World.levels. Never throws.</summary>
         public void Build()
         {
             roots.Clear();
             nodesByLevel.Clear();
+            infInCounts.Clear();
+            infOutCounts.Clear();
             PlayerNode = null;
             SceneLabel = GetSceneLabel();
 
@@ -91,65 +149,70 @@ namespace PPBTool
                     return;
                 }
 
-                // Boxes own their interior level through Block.SubLevel; the block always
-                // lives in the parent level, so that pair defines the tree edge.
-                var parents = new Dictionary<Level, Block>();
+                var levelSet = new HashSet<Level>(levels);
+                var parentByLevel = new Dictionary<Level, Block>();
                 var childrenByLevel = new Dictionary<Level, List<Level>>();
 
-                foreach (Level parent in levels)
+                foreach (Level level in levels)
                 {
-                    if (parent == null || parent.blockList == null)
+                    if (level == null)
                     {
                         continue;
                     }
 
-                    foreach (Block block in parent.blockList)
+                    Block parent = PreferredParent(level);
+                    if (parent != null && !levelSet.Contains(parent.OuterLevel))
                     {
-                        if (block == null || block.SubLevel == null)
-                        {
-                            continue;
-                        }
+                        parent = null;
+                    }
 
-                        if (!parents.ContainsKey(block.SubLevel))
-                        {
-                            parents[block.SubLevel] = block;
-                        }
+                    parentByLevel[level] = parent;
+                    if (parent == null)
+                    {
+                        continue;
+                    }
 
-                        List<Level> children;
-                        if (!childrenByLevel.TryGetValue(parent, out children))
-                        {
-                            children = new List<Level>();
-                            childrenByLevel[parent] = children;
-                        }
+                    List<Level> children;
+                    if (!childrenByLevel.TryGetValue(parent.OuterLevel, out children))
+                    {
+                        children = new List<Level>();
+                        childrenByLevel[parent.OuterLevel] = children;
+                    }
 
-                        if (!children.Contains(block.SubLevel))
-                        {
-                            children.Add(block.SubLevel);
-                        }
+                    if (!children.Contains(level))
+                    {
+                        children.Add(level);
                     }
                 }
+
+                BuildInfinityCounts(levels);
 
                 var rootLevels = new List<Level>();
                 foreach (Level level in levels)
                 {
-                    if (level != null && !parents.ContainsKey(level))
+                    if (level != null && parentByLevel[level] == null)
                     {
                         rootLevels.Add(level);
                     }
                 }
 
+                rootLevels.Sort((a, b) =>
+                {
+                    int va = a.InfZone ? 1 : 0;
+                    int vb = b.InfZone ? 1 : 0;
+                    return va != vb ? va.CompareTo(vb) : 0;
+                });
+
                 if (rootLevels.Count == 0)
                 {
-                    // Malformed/cyclic scene: at least show every level instead of nothing.
                     rootLevels.AddRange(levels.Where(l => l != null));
                 }
 
-                // Several root levels are normal for CustomHubs hubs (each top-level Block
-                // is its own level), so number unnamed roots instead of showing "hub" twice.
                 for (int i = 0; i < rootLevels.Count; i++)
                 {
                     roots.Add(BuildNode(
-                        rootLevels[i], null, null, 0, childrenByLevel, i, rootLevels.Count));
+                        rootLevels[i], parentByLevel[rootLevels[i]], null, 0,
+                        childrenByLevel, parentByLevel, i, rootLevels.Count));
                 }
 
                 Block player = GameState.Player;
@@ -174,7 +237,9 @@ namespace PPBTool
 
         private LevelNode BuildNode(
             Level level, Block parent, LevelNode parentNode, int depth,
-            Dictionary<Level, List<Level>> childrenByLevel, int rootIndex, int rootCount)
+            Dictionary<Level, List<Level>> childrenByLevel,
+            Dictionary<Level, Block> parentByLevel,
+            int rootIndex, int rootCount)
         {
             var node = new LevelNode
             {
@@ -183,8 +248,17 @@ namespace PPBTool
                 ParentNode = parentNode,
                 Depth = depth,
                 Title = BuildTitle(level, parent, depth, rootIndex, rootCount),
-                Subtitle = BuildSubtitle(level),
+                Tags = BuildTags(level, parent),
             };
+            node.Subtitle = BuildSubtitle(level, node.Tags);
+            if (parent != null)
+            {
+                string flags = BlockFlags(parent);
+                if (!string.IsNullOrEmpty(flags))
+                {
+                    node.Subtitle += "  {" + flags + "}";
+                }
+            }
 
             nodesByLevel[level] = node;
 
@@ -193,47 +267,116 @@ namespace PPBTool
             {
                 foreach (Level child in childLevels)
                 {
-                    // A SubLevel can be referenced by several blocks. Build it exactly once,
-                    // otherwise whole sub-trees are duplicated in the tree.
                     if (nodesByLevel.ContainsKey(child))
                     {
                         continue;
                     }
 
+                    Block childParent;
+                    parentByLevel.TryGetValue(child, out childParent);
                     node.Children.Add(BuildNode(
-                        child, FindParentBlock(child, level), node, depth + 1,
-                        childrenByLevel, 0, 1));
+                        child, childParent, node, depth + 1,
+                        childrenByLevel, parentByLevel, 0, 1));
                 }
             }
 
             return node;
         }
 
-        private static Block FindParentBlock(Level child, Level parentLevel)
+        private void BuildInfinityCounts(List<Level> levels)
         {
-            if (parentLevel == null || parentLevel.blockList == null)
+            foreach (Level level in levels)
+            {
+                if (level == null)
+                {
+                    continue;
+                }
+
+                if (level.infEnterBlocks != null)
+                {
+                    foreach (Block block in level.infEnterBlocks)
+                    {
+                        if (block != null && block.SubLevel != null)
+                        {
+                            Bump(infInCounts, block.SubLevel);
+                        }
+                    }
+                }
+
+                if (level.infExitBlocks != null)
+                {
+                    foreach (Block block in level.infExitBlocks)
+                    {
+                        if (block != null && block.OuterLevel != null)
+                        {
+                            Bump(infOutCounts, block.OuterLevel);
+                        }
+                    }
+                }
+            }
+        }
+
+        private static void Bump(Dictionary<Level, int> counts, Level level)
+        {
+            int value;
+            counts.TryGetValue(level, out value);
+            counts[level] = value + 1;
+        }
+
+        /// <summary>
+        /// A box can be referenced by both its real parent and a void/infinity block.
+        /// Prefer the real (non-InfZone) parent so the tree mirrors how the player walks.
+        /// </summary>
+        public static Block PreferredParent(Level level)
+        {
+            if (level == null || level.BlocksWithThisAsTheirSubLevel == null)
             {
                 return null;
             }
 
-            foreach (Block block in parentLevel.blockList)
+            Block fallback = null;
+            foreach (Block block in level.BlocksWithThisAsTheirSubLevel)
             {
-                if (block != null && block.SubLevel == child)
+                if (block == null || block.OuterLevel == null)
+                {
+                    continue;
+                }
+
+                if (!block.OuterLevel.InfZone)
                 {
                     return block;
                 }
+
+                if (fallback == null)
+                {
+                    fallback = block;
+                }
             }
 
-            return null;
+            return fallback;
         }
 
         private static string BuildTitle(
             Level level, Block parent, int depth, int rootIndex, int rootCount)
         {
-            string area = CleanName(level.hubAreaName);
-            if (!string.IsNullOrEmpty(area))
+            if (level.InfZone)
             {
-                return area;
+                string voidTitle = "Void " + level.width + "x" + level.height;
+                return rootCount > 1 ? voidTitle + " #" + (rootIndex + 1) : voidTitle;
+            }
+
+            if (parent != null && parent.IsSomeInfEnterBlock)
+            {
+                string area = CleanName(level.hubAreaName);
+                return string.IsNullOrEmpty(area)
+                    ? "∞Room " + level.width + "x" + level.height
+                    : area;
+            }
+
+            string title = CleanName(level.hubAreaName);
+            if (!string.IsNullOrEmpty(title))
+            {
+                return title;
             }
 
             if (depth == 0)
@@ -250,7 +393,39 @@ namespace PPBTool
             return "Room " + level.width + "x" + level.height;
         }
 
-        private static string BuildSubtitle(Level level)
+        private string BuildTags(Level level, Block parent)
+        {
+            var tags = new List<string>();
+            if (level.InfZone)
+            {
+                tags.Add("void");
+            }
+
+            if (parent != null && parent.IsSomeInfEnterBlock)
+            {
+                tags.Add("∞进入块");
+            }
+
+            if (parent != null && parent.IsSomeInfExitBlock)
+            {
+                tags.Add("∞退出块");
+            }
+
+            int count;
+            if (infInCounts.TryGetValue(level, out count) && count > 0)
+            {
+                tags.Add("∞进入←" + count);
+            }
+
+            if (infOutCounts.TryGetValue(level, out count) && count > 0)
+            {
+                tags.Add("∞退出←" + count);
+            }
+
+            return string.Join(" ", tags.ToArray());
+        }
+
+        private static string BuildSubtitle(Level level, string tags)
         {
             int boxes = level.blockList == null
                 ? 0
@@ -267,6 +442,11 @@ namespace PPBTool
             if (portals > 0)
             {
                 text += "  portals:" + portals;
+            }
+
+            if (!string.IsNullOrEmpty(tags))
+            {
+                text += "  [" + tags + "]";
             }
 
             return text;
@@ -313,6 +493,153 @@ namespace PPBTool
                 : cleaned;
         }
 
+        public static bool IsVoidLevel(Level level)
+        {
+            return level != null && level.InfZone;
+        }
+
+        public static bool IsVoidBox(Block block)
+        {
+            return block != null && block.OuterLevel != null && block.OuterLevel.InfZone;
+        }
+
+        private static Block SafeExitBlock(Level level)
+        {
+            if (level == null || level.BlocksWithThisAsTheirSubLevel == null
+                || level.BlocksWithThisAsTheirSubLevel.Count == 0)
+            {
+                return null;
+            }
+
+            try
+            {
+                return level.GetExitBlock();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        public static Block ExitBlockOf(Level level)
+        {
+            return SafeExitBlock(level);
+        }
+
+        /// <summary>Game clone condition: a box is light when it is not its level's exit block.</summary>
+        public static bool IsCloneBox(Block block)
+        {
+            if (block == null || block.SubLevel == null)
+            {
+                return false;
+            }
+
+            Block exit = SafeExitBlock(block.SubLevel);
+            return exit != null && block != exit;
+        }
+
+        public static int OwnerCount(Block block)
+        {
+            if (block == null || block.SubLevel == null
+                || block.SubLevel.BlocksWithThisAsTheirSubLevel == null)
+            {
+                return 0;
+            }
+
+            return block.SubLevel.BlocksWithThisAsTheirSubLevel.Count;
+        }
+
+        public static string BlockFlags(Block block)
+        {
+            if (block == null)
+            {
+                return string.Empty;
+            }
+
+            var parts = new List<string>();
+            if (block.SubLevel != null)
+            {
+                parts.Add("box");
+            }
+
+            if (block.FlipH)
+            {
+                parts.Add("flip");
+            }
+
+            if (block.IsSomeInfEnterBlock)
+            {
+                parts.Add("∞in");
+            }
+
+            if (block.IsSomeInfExitBlock)
+            {
+                parts.Add("∞out");
+            }
+
+            if (block.GeneratedInf)
+            {
+                parts.Add("generated∞");
+            }
+
+            if (block.Possessable)
+            {
+                parts.Add("possess");
+            }
+
+            if (block.Locked)
+            {
+                parts.Add("locked");
+            }
+
+            if (block.Shield)
+            {
+                parts.Add("shield");
+            }
+
+            if (block.Weight)
+            {
+                parts.Add("weight");
+            }
+
+            if (block.Rooted)
+            {
+                parts.Add("rooted");
+            }
+
+            if (block.SpecialEffect != 0)
+            {
+                parts.Add("fx" + block.SpecialEffect);
+            }
+
+            if (IsCloneBox(block))
+            {
+                parts.Add("clone");
+            }
+
+            return string.Join(" ", parts.ToArray());
+        }
+
+        public static string DescribeLevel(Level level)
+        {
+            if (level == null)
+            {
+                return "?";
+            }
+
+            if (!string.IsNullOrEmpty(level.hubAreaName))
+            {
+                return level.hubAreaName.Replace('_', ' ');
+            }
+
+            if (level.InfZone)
+            {
+                return "Void " + level.width + "x" + level.height;
+            }
+
+            return level.width + "x" + level.height;
+        }
+
         /// <summary>True when the player can legally stand on this cell (empty, no portal).</summary>
         public static bool IsWalkableCell(Level level, int x, int y)
         {
@@ -330,10 +657,85 @@ namespace PPBTool
             return floor == null || floor.Type != Floor.FloorType.LevelPortal;
         }
 
+        public List<InfLink> GetInfLinks(Level level)
+        {
+            var links = new List<InfLink>();
+            if (level == null)
+            {
+                return links;
+            }
+
+            if (level.infEnterBlocks != null)
+            {
+                for (int i = 0; i < level.infEnterBlocks.Count; i++)
+                {
+                    Block block = level.infEnterBlocks[i];
+                    if (block != null)
+                    {
+                        links.Add(new InfLink
+                        {
+                            Enter = true,
+                            Index = i,
+                            Source = level,
+                            Block = block,
+                            Container = block.OuterLevel,
+                            Target = block.SubLevel,
+                            TargetX = -1,
+                            TargetY = -1,
+                        });
+                    }
+                }
+            }
+
+            if (level.infExitBlocks != null)
+            {
+                for (int i = 0; i < level.infExitBlocks.Count; i++)
+                {
+                    Block block = level.infExitBlocks[i];
+                    if (block != null)
+                    {
+                        links.Add(new InfLink
+                        {
+                            Enter = false,
+                            Index = i,
+                            Source = level,
+                            Block = block,
+                            Container = block.OuterLevel,
+                            Target = block.OuterLevel,
+                            TargetX = block.xpos,
+                            TargetY = block.ypos,
+                        });
+                    }
+                }
+            }
+
+            return links;
+        }
+
+        /// <summary>First null index, otherwise the list length. Never overwrites an existing zone.</summary>
+        public static int NextInfIndex(Level level, bool enter)
+        {
+            List<Block> list = enter ? level.infEnterBlocks : level.infExitBlocks;
+            if (list == null)
+            {
+                return 0;
+            }
+
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (list[i] == null)
+                {
+                    return i;
+                }
+            }
+
+            return list.Count;
+        }
+
         /// <summary>
-        /// A cell holding a box means "go inside that box". The landing cell is chosen inside
-        /// the box's own level: Level.GetExitBlock() is the box block in the *parent* level,
-        /// so its coordinates cannot be used inside the interior.
+        /// Landing cell when entering a box: nearest free cell to the interior center.
+        /// Level.GetExitBlock() is the box block in the parent level, so its coordinates
+        /// must not be used inside the interior.
         /// </summary>
         public static bool TryResolveEnterable(Block box, out TeleportCell cell)
         {
@@ -373,23 +775,8 @@ namespace PPBTool
             Level current = level;
             while (current != null && guard++ < 64)
             {
-                if (current.BlocksWithThisAsTheirSubLevel == null
-                    || current.BlocksWithThisAsTheirSubLevel.Count == 0)
-                {
-                    break;
-                }
-
-                Block parent;
-                try
-                {
-                    parent = current.GetExitBlock();
-                }
-                catch
-                {
-                    break;
-                }
-
-                if (parent == null || parent.SubLevel != current)
+                Block parent = PreferredParent(current);
+                if (parent == null || parent.OuterLevel == null)
                 {
                     break;
                 }

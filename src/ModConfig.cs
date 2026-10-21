@@ -15,6 +15,9 @@ namespace PPBTool
         private readonly ConfigEntry<bool> closeAfterTeleport;
         private readonly ConfigEntry<bool> undoable;
         private readonly ConfigEntry<int> cellSize;
+        private readonly ConfigEntry<bool> hideVoidBoxes;
+        private readonly ConfigEntry<bool> useLevelPalette;
+        private readonly ConfigEntry<bool> portalThumbnails;
         private readonly ConfigEntry<bool> logSceneTree;
 
         public ModConfig(ConfigFile config)
@@ -42,6 +45,20 @@ namespace PPBTool
                 "Teleport", "CellSize", 24,
                 "Initial map cell size in pixels (clamped to 8..64).");
 
+            hideVoidBoxes = config.Bind(
+                "Teleport", "HideVoidBoxes", false,
+                "Hide boxes/levels that live inside an infinity void.");
+
+            useLevelPalette = config.Bind(
+                "Teleport", "UseLevelPalette", false,
+                "Draw the map with each level's own block/floor colours instead of the " +
+                "PPBTool schematic palette. Drawing only; the game palette is untouched.");
+
+            portalThumbnails = config.Bind(
+                "Teleport", "PortalThumbnails", false,
+                "Draw level thumbnails on portal cells. Off keeps the current purple " +
+                "portal marker style.");
+
             logSceneTree = config.Bind(
                 "Diagnostics", "LogSceneTree", false,
                 "Log every scanned level node when the map opens. Useful when reporting " +
@@ -62,6 +79,24 @@ namespace PPBTool
         public int CellSize
         {
             get { return Math.Max(8, Math.Min(64, cellSize.Value)); }
+        }
+
+        public bool HideVoidBoxes
+        {
+            get { return hideVoidBoxes.Value; }
+            set { hideVoidBoxes.Value = value; }
+        }
+
+        public bool UseLevelPalette
+        {
+            get { return useLevelPalette.Value; }
+            set { useLevelPalette.Value = value; }
+        }
+
+        public bool PortalThumbnails
+        {
+            get { return portalThumbnails.Value; }
+            set { portalThumbnails.Value = value; }
         }
 
         public bool LogSceneTree

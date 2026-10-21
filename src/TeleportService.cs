@@ -138,6 +138,18 @@ namespace PPBTool
                 player.MovedSinceRestart = true;
                 Draw.FlipH = targetCameraFlipH;
 
+                // Keep the infinity-zone flag in sync so void teleports draw/undo correctly.
+                bool targetInfZone = World.LevelIsInfZone(target);
+                if (World.WentToInfZone != targetInfZone)
+                {
+                    if (undoable)
+                    {
+                        UndoManager.RegisterWentToInfZone();
+                    }
+
+                    World.WentToInfZone = targetInfZone;
+                }
+
                 // 4. Repair all derived state that normally changes during a move.
                 World.ComputeBlockLists();
                 Draw.ResetCameraOffset();

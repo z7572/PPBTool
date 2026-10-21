@@ -3,9 +3,10 @@ namespace PPBTool
     /// <summary>
     /// "Complete the current level" via the game's own victory flow.
     ///
-    /// The game itself does this in World.KeyboardShortcuts (debug key "I"), so this is
-    /// the same code path: set Winning/WinCount and let World.UpdateInner run its normal
-    /// 1.5s celebration, save, unlock and GoToNextLevel logic.
+    /// Mimics UndoManager.CheckWinCondition: Winning=true and WinCount=0, so
+    /// World.UpdateInner plays the normal ~1.5s gradual white/brighten animation before
+    /// saving, unlocking and moving to the next level. (The game's debug key sets
+    /// WinCount=1.5f to skip that animation, which we deliberately do not do.)
     /// </summary>
     internal static class WinService
     {
@@ -37,10 +38,10 @@ namespace PPBTool
                 return false;
             }
 
-            // Mirror the game's debug shortcut. Everything after this point (achievements,
-            // save file, next level/hub transition, CustomHubs compatibility) is vanilla.
+            // Same state CheckWinCondition would set after a real solve: WinCount stays 0
+            // so the next UpdateInner frames run the gradual whitening animation.
             World.Winning = true;
-            World.WinCount = 1.5f;
+            World.WinCount = 0f;
             World.WinAnimT = 0f;
             World.WinSoundPlayed = false;
 
