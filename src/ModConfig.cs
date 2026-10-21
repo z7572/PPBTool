@@ -1,6 +1,7 @@
 using System;
 using BepInEx.Configuration;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace PPBTool
 {
@@ -112,7 +113,70 @@ namespace PPBTool
 
         public bool OpenMapPressed()
         {
-            return openMapKey.Value.IsDown();
+            KeyboardShortcut shortcut = openMapKey.Value;
+            return shortcut.IsDown() || InputSystemPressed(shortcut);
+        }
+
+        /// <summary>
+        /// BepInEx's legacy input adapter can miss GetKeyDown after an alt-tab focus
+        /// change. Poll the game's Input System directly as a fallback.
+        /// </summary>
+        private static bool InputSystemPressed(KeyboardShortcut shortcut)
+        {
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard == null || shortcut.MainKey == KeyCode.None)
+            {
+                return false;
+            }
+
+            Key key;
+            if (!TryMapKey(shortcut.MainKey, out key) || !keyboard[key].wasPressedThisFrame)
+            {
+                return false;
+            }
+
+            foreach (KeyCode modifier in shortcut.Modifiers)
+            {
+                Key modifierKey;
+                if (!TryMapKey(modifier, out modifierKey) || !keyboard[modifierKey].isPressed)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool TryMapKey(KeyCode keyCode, out Key key)
+        {
+            key = Key.None;
+            if (keyCode == KeyCode.None)
+            {
+                return false;
+            }
+
+            string name = keyCode.ToString();
+            if (name.StartsWith("Alpha", StringComparison.Ordinal))
+            {
+                name = "Digit" + name.Substring(5);
+            }
+            else if (name.StartsWith("Keypad", StringComparison.Ordinal))
+            {
+                name = "Numpad" + name.Substring(6);
+            }
+            else
+            {
+                switch (name)
+                {
+                    case "Return": name = "Enter"; break;
+                    case "LeftControl": name = "LeftCtrl"; break;
+                    case "RightControl": name = "RightCtrl"; break;
+                    case "BackQuote": name = "Backquote"; break;
+                    case "Print": name = "PrintScreen"; break;
+                }
+            }
+
+            return Enum.TryParse(name, true, out key) && key != Key.None;
         }
     }
 }

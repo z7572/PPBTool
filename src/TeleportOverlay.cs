@@ -1965,8 +1965,11 @@ namespace PPBTool
                     GUI.EndGroup();
                 }
             }
-            else if (visualOwner == null)
+            else
             {
+                // Root levels (including hubs) and levels without a valid primary
+                // exit block still need a level background; only the space outside
+                // the level grid (and outside a box) stays black.
                 Fill(new Rect(localX, localY, gridW, gridH), ResolveLevelColor(level, bgCell));
             }
 
@@ -2247,11 +2250,7 @@ namespace PPBTool
                 return;
             }
 
-            if (block.IsPlayer)
-            {
-                DrawPlayerArt(r, block, cell, depth);
-            }
-            else if (block.SubLevel != null)
+            if (block.SubLevel != null)
             {
                 DrawBoxArt(r, block, cell, depth);
             }
@@ -2264,7 +2263,13 @@ namespace PPBTool
         private void DrawWallArt(Rect r, Block block, int cell, Block parentBox)
         {
             Block owner = parentBox ?? LevelGraph.ExitBlockOf(block.OuterLevel);
-            Color color = GameWallColor(owner, cell);
+            // A wall carries its own color; only completely black/invalid walls
+            // need the level exit block as a fallback. This also keeps a possessed
+            // wall's color instead of painting it as a player square.
+            Block colorSource = block.val > 0.0001f || block.sat > 0.0001f
+                ? block
+                : (owner ?? block);
+            Color color = GameWallColor(colorSource, cell);
             bool flip = block.FlipH;
 
             if (cell >= 256f && texWallBig != null && texWallBig.Length > 0)
@@ -2303,6 +2308,12 @@ namespace PPBTool
 
             DrawWallCounter(r, block, cell);
             DrawFlipShineArt(r, block, cell);
+
+            // Game: DrawWall(...); if (block.Possessable || block.IsPlayer) DrawFace(...).
+            if (block.Possessable || block.IsPlayer)
+            {
+                DrawFaceArt(r, block, cell);
+            }
         }
 
         private void DrawWallCounter(Rect r, Block block, int cell)
@@ -2407,12 +2418,16 @@ namespace PPBTool
 
             DrawBoxBorder(r, block, sub, cell);
             DrawFlipShineArt(r, block, cell);
-            bool parentVoid = block.OuterLevel != null && block.OuterLevel.InfZone;
-            if (!parentVoid && sub != null && GameState.Player != null
+            if (sub != null && GameState.Player != null
                 && GameState.Player.OuterLevel == sub
                 && GameState.Player.SubLevel == null)
             {
                 DrawFaceArt(r, GameState.Player, cell);
+            }
+
+            if (block.Possessable && !block.IsPlayer)
+            {
+                DrawFaceArt(r, block, cell);
             }
 
             DrawInfSymbols(r, block, cell, depth);
@@ -2735,29 +2750,6 @@ namespace PPBTool
         private static bool IsBorderWall(Block block)
         {
             return block != null && block.SubLevel == null;
-        }
-
-        private void DrawPlayerArt(Rect r, Block block, int cell, int depth)
-        {
-            bool parentVoid = block.OuterLevel != null && block.OuterLevel.InfZone;
-            if (block.SubLevel != null)
-            {
-                DrawBoxArt(r, block, cell, depth);
-                if (!parentVoid)
-                {
-                    DrawFaceArt(r, block, cell);
-                }
-                return;
-            }
-
-            Color color = GamePlayerColor(block, cell);
-            Fill(r, color);
-            if (!parentVoid)
-            {
-                DrawFaceArt(r, block, cell);
-            }
-
-            DrawInfSymbols(r, block, cell, depth);
         }
 
         private void DrawFaceArt(Rect r, Block block, int cell)
