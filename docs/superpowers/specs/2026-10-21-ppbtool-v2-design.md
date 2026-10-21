@@ -14,8 +14,9 @@
 3. 新增手动前往该层的 **∞ 进入 / ∞ 退出** 对应层级，并可在树/地图中标记。
 4. 层级树可**折叠/展开**。
 5. 可选择**隐藏虚空中的箱子/层级**。
-6. 地图绘制更多元素：玩家位置、目标光标、箱子落点、快速移动、按钮/终点/传送门/信息/碎裂地砖等全部地砖，以及箱子的翻转、克隆、∞、可附身等属性。
+6. 地图绘制更多元素：玩家位置、目标光标、箱子落点、快速移动、按钮/终点/传送门/信息/碎裂地砖等全部地砖，以及箱子的翻转、克隆（浅色箱）、∞、可附身等属性。
 7. 修复用户观测到的 5 个 UI 问题，并继续审查代码排除同类问题。
+8. **一键通关播放原版“逐渐变白”动画**：不再使用调试键的瞬间结算写法。
 
 ## 2. 关键语义（本轮澄清）
 
@@ -35,11 +36,12 @@
 | 层级树 | `World.levels`；`Block.SubLevel` 是子层；父层由拥有该 SubLevel 的 `Block.OuterLevel` 给出 |
 | 父块坐标陷阱 | `Level.GetExitBlock()` 返回 `BlocksWithThisAsTheirSubLevel[0]`，是**父层里的箱子块**；其 `x/y` 属于父层，不能当作子层内部坐标 |
 | 虚空层 | `Level.InfZone == true`（由 `LoadLevel.CreateInfZone()` 创建，7×7，黑色虚空） |
-| ∞ 退出 | `level.infExitBlocks[n]` 是虚空里的一个块，`block.SubLevel == level`；`block.OuterLevel` 是对应的虚空层 |
-| ∞ 进入 | `level.infEnterBlocks[n]` 是虚空里的一个块，`block.SubLevel` 是一个 5×5 空房间；该房间是 ∞ 进入落点层 |
-| ∞ 区生成 | `LoadLevel.CreateInfExitZones()` 在读档时为每个正常层生成 `infExitBlocks[0]`；`CreateInfEnterZone` 在首次 ∞ 进入时按需生成 |
+| ∞ 退出 | `level.infExitBlocks[n]` 是一个块：`block.SubLevel == level`；玩家从 `level` 无限退出时会出现在 `block.OuterLevel` 中 `block` 的旁边。`block.OuterLevel` 不一定是虚空，取决于该块被放在哪一层 |
+| ∞ 进入 | `level.infEnterBlocks[n]` 是一个块：玩家无限进入 `level` 时会进入 `block.SubLevel`。该子层不一定是 5×5，取决于该块实际拥有的 SubLevel |
+| ∞ 区生成 | `LoadLevel.CreateInfExitZones()` 在读档时为每个正常层生成 `infExitBlocks[0]`；`CreateInfEnterZone` 在首次 ∞ 进入时按需生成。生成器默认创建“虚空容器 + 5×5 房间”，但 UI 必须按**实际 Block/Level** 导航，不能硬编码 5×5/虚空 |
 | 翻转 | 进入翻转箱子会翻转玩家与摄像机；路径翻转 = 根→目标层所有父块 `FlipH` 的异或 |
-| 克隆（启发式） | 同一 `SubLevel` 被多个 `Block` 引用（`SubLevel.BlocksWithThisAsTheirSubLevel.Count > 1`） |
+| 克隆箱（浅色） | 游戏 `Draw.cloneIntensity()`：当 `block != block.SubLevel.GetExitBlock()` 时强度为 1，颜色变亮/降饱和。即“同一 SubLevel 的多个箱子中，不是主出口箱的那些”就是浅色克隆箱 |
+| 一键通关 | 正常结算由 `UndoManager.CheckWinCondition()` 设置 `Winning=true; WinCount=0; WinSoundPlayed=false`；`World.UpdateInner` 用 1.5s 把 `WinAnimT` 从 0 推到 1，驱动墙面/箱子颜色逐渐变亮发白（TUI 下另有白色叠加）。v1 的 `WinCount=1.5f` 是调试键的瞬间写法，v2 改回 0 |
 | 暂停 | `World.State == WS.Paused`；`World.UpdateInner` 被 Harmony Prefix 跳过即可冻结 |
 
 ## 4. 数据层设计
@@ -66,7 +68,7 @@
   - `Level`、`ParentBlock`、`ParentNode`、`Title`、`Subtitle`、`Tags`、`Depth`、`Children`、`ContainsPlayer`。
 - 标题：
   - 虚空层：`Void WxH`（多个虚空根加 `#n`）；
-  - ∞ 进入房间：`∞Room 5x5`；
+  - ∞ 进入目标层：按实际标题显示（`hubAreaName` / 尺寸 / `∞Room`），并带 `∞进入` 标签；生成器默认 5×5，但以实际 `Level` 为准；
   - `hubAreaName` 去下划线；
   - 根层用 `World.currentLevelName`；
   - 其它箱子：`Box (x, y)`。
@@ -74,22 +76,40 @@
   - `void`；
   - `∞进入块` / `∞退出块`（当前层的父块是 ∞ 块时）；
   - `∞进入←n` / `∞退出←n`（有 n 个层通过 ∞ 进入/退出指向本层时）；
-  - 父块属性：`{flip clone×2 possess locked ...}`。
+  - 父块属性：`{flip clone possess locked ...}`，其中 `clone` 使用游戏自身的浅色判定 `block != block.SubLevel.GetExitBlock()`。
 
 ### 4.3 ∞ 链接模型
 
 ```text
-InfLink { bool Enter; int Index; Level Source; Level Target; Block Block; }
+InfLink {
+  bool Enter; int Index;
+  Level Source;      // 当前层 L
+  Block Block;       // L.infEnterBlocks[n] 或 L.infExitBlocks[n]
+  Level Container;   // Block.OuterLevel：这个 ∞ 块实际所在的层
+  Level Target;      // Enter ? Block.SubLevel : Block.OuterLevel
+  int TargetX, TargetY; // 退出：Block 在 Container 中的格子；进入：-1（用落点）
+}
 ```
 
 - 对选中层 `L`：
-  - `L.infEnterBlocks[n]` 非空 → `Target = block.SubLevel`（5×5 房间）；
-  - `L.infExitBlocks[n]` 非空 → `Target = block.OuterLevel`（虚空层）。
+  - `L.infEnterBlocks[n]` 非空：
+    - `Container = block.OuterLevel`；
+    - `Target = block.SubLevel`（玩家无限进入 L 后到达的层，实际尺寸/内容以它为准）；
+    - 跳转时选中 `Target`，光标放到该层的最近可站立空格。
+  - `L.infExitBlocks[n]` 非空：
+    - `Container = block.OuterLevel`（玩家从 L 无限退出后出现的层，不一定是虚空）；
+    - `Target = Container`；
+    - 跳转时选中 `Container`，光标放到 `block` 的格子 `(block.xpos, block.ypos)`，即 ∞ 出口箱。
 - `GetInfLinks(L)` 返回两者，UI 按方向分组。
+- 菜单文案使用**实际标题**，例如：
+  - `∞进入 #0 → ∞Room 5x5`（若 Target 是 5×5）；
+  - `∞退出 #0 → Box (3,3) @ Void 7x7`（若 Container 是虚空）。
+  - 不硬编码“5×5”“虚空”字样，标题来自 `Level.hubAreaName / 尺寸 / Void`。
 - 反向计数：供树标签 `∞进入←n` / `∞退出←n`。
 - 若 ∞ 进入链接不存在：UI 提供“生成 ∞ 进入区”按钮，调用 `LoadLevel.CreateInfEnterZone(L, 0)`；
   ∞ 退出同理调用 `CreateInfExitZone(L, 0)`。
-  - 生成是**显式操作**，会改动当前场景（新增层/块）；不可撤销；生成后 `World.ComputeBlockLists()` + 重建树 + 跳到目标层。
+  - 生成器默认形式：∞进入 = 虚空容器 + 5×5 房间；∞退出 = 虚空容器 + 出口块。
+  - 生成是**显式操作**，会改动当前场景（新增层/块）；不可撤销；生成后 `World.ComputeBlockLists()` + 重建树 + 跳到实际 Target。
   - 生成失败（如根层没有父块、`GetExitBlock()` 抛异常）→ 提示，不改变状态。
 
 ### 4.4 落点与翻转
@@ -126,12 +146,13 @@ InfLink { bool Enter; int Index; Level Source; Level Target; Block Block; }
 ### 5.3 地图
 
 - 点击/Enter 分派：
-  - 箱子格 → 打开该箱子层级；
+  - 普通箱子格 → 打开该箱子层级；
   - 空格且非传送门 → 传送；
+  - 位于虚空层内的箱子 → **只定位/查看，不进入**（虚空里的箱子本身不可进入）；
   - 其它 → 提示。
 - 光标：
   - 跟随鼠标（仅在鼠标实际移动时）与方向键/WASD；
-  - 颜色：可传送=绿、箱子=青、传送门=紫、墙/玩家=红；
+  - 颜色：可传送=绿、箱子=青、传送门=紫、墙/玩家/虚空箱=红；
   - 中心显示 `+ / > / P / x`。
 - 玩家标记：黄色圆环 + 点。
 - 箱子落点标记：绿色圆环 + 十字，表示“进入该层会落在哪里”。
@@ -140,9 +161,10 @@ InfLink { bool Enter; int Index; Level Source; Level Target; Block Block; }
   - Button、PlayerButton、LevelPortal、Info、Item、Label、BreakFloor、FastTravel、GalleryFloor、DemoEnd、Smile、Show；
   - 每种有独立底色 + 短标签（`o @ <> i # T X FT G E :) S`）；
   - 快速移动用绿色 `FT`。
-- 箱子属性徽标（小字）：`F` 翻转、`C` 克隆、`I` ∞进入块、`O` ∞退出块、`*` 生成∞、`P` 可附身、`L` 锁定。
+- 箱子属性徽标（小字）：`F` 翻转、`C` 克隆（浅色箱）、`I` ∞进入块、`O` ∞退出块、`*` 生成∞、`P` 可附身、`L` 锁定。
+- **克隆箱按游戏自身浅色逻辑渲染**：`block != block.SubLevel.GetExitBlock()` 时用更亮、更低饱和的箱色；主出口箱用正常箱色。
 - 详情栏显示光标格坐标、内容、地砖名、属性、落点。
-- 虚空层使用深色背景 + 淡 `VOID` 水印。
+- 虚空层使用深色背景 + 淡 `VOID` 水印；虚空层内的箱子标注“不可进入”。
 - 图例分两行，覆盖主要颜色。
 
 ### 5.4 返回上一级
@@ -155,22 +177,29 @@ InfLink { bool Enter; int Index; Level Source; Level Target; Block Block; }
 ### 5.5 ∞ 进入 / ∞ 退出
 
 - 工具栏两个按钮：`∞ 进入`、`∞ 退出`。
-- 弹出菜单列出当前层的所有对应链接：`∞进入 #0 → 5x5`、`∞退出 #0 → Void 7x7`。
-- 点击链接 → 跳转目标层。
+- 弹出菜单列出当前层的所有对应链接，使用实际层级标题：
+  - `∞进入 #0 → ∞Room 5x5`（Target = `block.SubLevel`）；
+  - `∞退出 #0 → Box (3,3) @ Void 7x7`（Target = `block.OuterLevel`，光标对准出口箱）。
+- 点击链接 → 跳转实际 Target 层；∞退出同时把光标放到出口箱格子。
 - 没有链接时：
   - 显示“生成 ∞ 进入区 / 生成 ∞ 退出区”按钮；
-  - 生成成功后自动跳到新层级。
+  - 生成成功后跳到实际 Target（生成器默认 5×5/虚空，但显示以实际 Level 为准）。
 - 树标签、地图徽标、详情栏共同标记 ∞ 层级/块。
 - 生成操作会改动场景，UI 需在按钮文案/提示中说明；只在用户点击时执行。
+- **不把“5×5/虚空”写死**：自定义/原版关卡可以把 ∞ 块放在任意层、指向任意 SubLevel，UI 按 Block 的实际 `OuterLevel/SubLevel` 展示与跳转。
 
 ### 5.6 虚空过滤
 
 - 工具栏开关 `隐藏虚空 / 显示虚空`，快捷键 `H`，持久化到 `[Teleport] HideVoidBoxes`。
 - 过滤规则：
-  - 隐藏 `Level.InfZone == true` 的根层；
-  - 隐藏父块位于虚空层的节点（如 `∞Room`）。
+  - 隐藏 `Level.InfZone == true` 的层（含其所有箱子）；
+  - 隐藏父块位于虚空层的节点（虚空箱子的内部层，如生成的 ∞Room）。
 - 被隐藏的节点仍保留在 `graph` 中；当前选中层不受影响。
 - 跳转到被隐藏的 ∞ 层级时自动关闭过滤。
+- **虚空里的箱子本身不可进入**：
+  - 即使关闭过滤、查看虚空层，虚空层内的箱子也只用于定位/标记，点击不进入、不传送；
+  - ∞ 导航直接跳转实际 Target 层，不依赖点击虚空箱。
+  - 虚空层只读：不允许把玩家传送进虚空层（避免与 ∞ 出口机制冲突）。
 
 ### 5.7 缩放与平移
 
@@ -188,6 +217,17 @@ InfLink { bool Enter; int Index; Level Source; Level Target; Block Block; }
 - 关闭按钮、工具栏按钮、树行、滚动条全部自绘，使用与面板一致的深色扁平风格，不使用 Unity 原生滚动条/按钮皮肤。
 - 中/英文案跟随 `Prefs.Language`。
 - Toast 在关闭状态下也能显示（例如暂停时按 F8 的状态提示）。
+
+### 5.9 一键通关的白化动画
+
+- v1 使用游戏调试键写法 `Winning=true; WinCount=1.5f`，会跳过 1.5 秒白化过程。
+- v2 改为与正常结算一致：
+  - `World.Winning = true;`
+  - `World.WinCount = 0f;`
+  - `World.WinAnimT = 0f;`
+  - `World.WinSoundPlayed = false;`
+- 随后完全交给 `World.UpdateInner`：`WinAnimT` 在 1.5 秒内从 0 平滑到 1，墙面/箱子颜色逐渐变亮发白（TUI 下另有白色叠加），再执行存档/解锁/下一关。
+- F7 的前置校验、CustomHubs 兼容、存档路径均不变。
 
 ## 6. 布局
 
@@ -214,6 +254,7 @@ InfLink { bool Enter; int Index; Level Source; Level Target; Block Block; }
 | 情况 | 行为 |
 |---|---|
 | 点击箱子 | 打开层级；不传送；不要求箱子有空格 |
+| 点击虚空层里的箱子 | 只定位/查看；不进入、不传送 |
 | 点击空格 | 传送；登记 Undo Turn；可选自动关闭 |
 | 点击传送门 | 提示，不传送 |
 | 点击墙/玩家 | 提示，不改变状态 |
@@ -226,7 +267,8 @@ InfLink { bool Enter; int Index; Level Source; Level Target; Block Block; }
 | 生成 ∞ 区失败 | Toast；不改状态；日志记录异常 |
 | 场景在打开期间被外部切换 | 每帧校验 `currentLevelName / levels.Count`，变化则重建 |
 | 关卡很大 | 只遍历可见行列；箱子落点按 Block 缓存 |
-| 多父层 | 只建一个节点；`clone×n` 标记；其余父块点击仍可导航 |
+| 多父层 | 只建一个节点；共享层属性标记；其余父块点击仍可导航 |
+| F7 一键通关 | 播放约 1.5s 的逐渐变白动画，再存档/解锁/下一关 |
 
 ## 8. 配置
 
@@ -260,14 +302,17 @@ LogSceneTree = false
 2. 在箱子内部点击空格 → 传送成功；`Ctrl+Z` 回父层原位；`Ctrl+Y` 再进入。
 3. 点击空格 → 传送；点击传送门/墙 → 只提示。
 4. 进入箱子后按“上一级”/Backspace → 回到包含该箱子的父层。
-5. 选中任意层按 `∞ 进入`：列出/生成 5×5 房间并跳转；`∞ 退出`：列出/生成虚空层并跳转；树上有 ∞ 标签。
-6. 打开“隐藏虚空”：虚空根与 ∞Room 从树中消失；关闭后恢复；刷新/重开后配置保持。
+5. 选中任意层按 `∞ 进入`：列出/生成链接，并跳转到 ∞ 进入块的**实际 SubLevel**（生成器默认 5×5，但不写死）；
+   `∞ 退出`：跳转到 ∞ 退出块的**实际 OuterLevel**，光标对准出口箱（生成器默认虚空，但不写死）；树上有 ∞ 标签。
+6. 打开“隐藏虚空”：虚空层、虚空层内的箱子、虚空箱子的内部层都从树中消失；关闭后恢复；刷新/重开后配置保持。
 7. 树可折叠/展开；滚动条为自绘；鼠标悬停高亮与行完全对齐。
 8. 地图边缘不出现半格；可水平/垂直拖动；缩放范围明显大于 v1；`适应` 可复位。
 9. 暂停界面按 F8：打开地图；关闭后仍在暂停界面；不出现“当前状态不能通关”。
 10. 按钮/关闭按钮视觉与面板一致，不出现 Unity 原生皮肤。
 11. 地砖、快速移动、箱子属性、玩家/落点标记均可辨认；图例与标记一致。
-12. `dotnet build -c Release` 0 warning / 0 error；v1 的通关、撤销、Restart、CustomHubs 行为不回归。
+12. **浅色克隆箱与游戏表现一致**：`block != block.SubLevel.GetExitBlock()` 的箱子在地图上用更亮的箱色，并标 `C`；主出口箱正常色。
+13. **F7 一键通关完整播放原版逐渐变白动画**（约 1.5 秒），随后正常存档/解锁/下一关；不是瞬间跳结算。
+14. `dotnet build -c Release` 0 warning / 0 error；v1 的撤销、Restart、CustomHubs 行为不回归。
 
 ## 11. 非目标
 
@@ -277,18 +322,29 @@ LogSceneTree = false
 - 不自动折叠/展开到用户未选择的层级（除默认策略）。
 - 不保证 ∞ 区生成在所有异常/损坏关卡上都成功；失败只提示。
 
-## 12. 风险与待确认
+## 12. 已确认与仍需确认
 
-1. **克隆定义**：本规格把“同一 SubLevel 被多个箱子引用”视为克隆；如果你指的是游戏内某种 `SpecialEffect` 克隆视觉，请指出，我再调整判定。
-2. **∞ 退出导航目标**：规格选择跳转到“虚空层”（`infExitBlocks[n].OuterLevel`），而不是源层；∞ 进入跳转到 5×5 房间。若你想反过来，请确认。
-3. **生成 ∞ 区**：会修改当前场景（新增层/块），不可撤销；只在显式点击时执行。是否接受？
-4. **虚空过滤**：隐藏虚空根和虚空父块下的节点；是否也要隐藏“仅通过虚空可达”的 5×5 房间（当前规则会隐藏）？
-5. **暂停中打开**：关闭后恢复暂停菜单；如果你希望关闭后直接继续游戏，请说明。
+已确认（本轮）：
+
+1. **克隆箱** = 游戏里显示为浅色的箱子：`block != block.SubLevel.GetExitBlock()`（游戏 `cloneIntensity` 条件），不是“所有多父层箱子”。
+2. **生成 ∞ 区**：接受；仅在显式点击时执行，会改动场景、不可撤销。
+3. **虚空过滤**：虚空里的箱子本身不可进入，因此虚空层、虚空箱及其内部层一起过滤；关闭过滤查看时，虚空箱也只定位、不进入。
+4. **暂停中关闭**：恢复到暂停菜单，不直接继续游戏。
+5. **F7 白化**：必须播放原版约 1.5 秒的逐渐变白，不再用瞬间结算。
+
+仍需你确认（1 点）：
+
+- **∞ 进入的跳转目标**：当前规格取 `block.SubLevel`（玩家无限进入后实际到达的层，生成器默认是 5×5 房间）；**∞ 退出**取 `block.OuterLevel`（玩家无限退出后出现的层，并把光标放到出口箱）。
+  如果你说的“对应的箱子层级”是指**∞ 入口/出口箱所在的容器层**（即 ∞进入也跳到 `block.OuterLevel`，把光标放在入口箱上），请指出，我改成“容器层 + 箱子格子”的统一模型。
+  两种模型的区别：
+  - 现在：∞进入 → 到达层；∞退出 → 出现层（更贴近玩家实际落点）。
+  - 统一容器：∞进入/退出 → 都跳到 ∞ 块所在的层，光标对准该块（更贴近“找到那个箱子”）。
 
 ## 13. 预计改动文件（批准后才动手）
 
-- `src/LevelGraph.cs`：`PreferredParent`、∞ 链接/计数、虚空/克隆/属性、标题/标签、`PathFlip` 修正。
-- `src/TeleportOverlay.cs`：折叠树 + 自绘滚动条、点击分派、上一级/∞ 菜单/生成、虚空过滤、地图图元/缩放/拖动、暂停状态、自绘控件。
+- `src/LevelGraph.cs`：`PreferredParent`、∞ 链接（Container/Target/Cell）、虚空/克隆（浅色判定）/属性、标题/标签、`PathFlip` 修正。
+- `src/TeleportOverlay.cs`：折叠树 + 自绘滚动条、点击分派、上一级/∞ 菜单/生成、虚空过滤、地图图元（含浅色克隆箱）/缩放/拖动、暂停状态、自绘控件。
+- `src/WinService.cs`：F7 改为 `WinCount=0`，播放原版白化动画。
 - `src/UiText.cs`：新增文案。
 - `src/ModConfig.cs`：`HideVoidBoxes`。
 - `README.md` / 本规格：使用说明与已知限制。
@@ -296,11 +352,14 @@ LogSceneTree = false
 ## 14. 测试策略
 
 - 构建：`dotnet build -c Release`，0 warning / 0 error。
-- 静态审查：对照 `_decomp` 确认 `Level.infEnterBlocks/infExitBlocks`、`CreateInf*`、`InfZone`、`Block` 属性名。
+- 静态审查：对照 `_decomp` 确认 `Level.infEnterBlocks/infExitBlocks`、`CreateInf*`、`InfZone`、`Block` 属性名，以及 `Draw.cloneIntensity` 的浅色判定。
 - 手动验收：按第 10 节逐条；重点：
   - 箱子点击不再传送；
+  - 浅色克隆箱显示与游戏一致；
+  - ∞进入/退出按实际 Block/Level 跳转；
   - 暂停 F8；
   - 虚空过滤 + ∞ 生成；
+  - F7 白化动画；
   - 箱子内传送 + 撤销/重做 + Restart；
   - CustomHubs 大厅。
 - 本轮不启动游戏做实机验证（按你的要求）；只做代码审查与构建验证。
