@@ -1775,6 +1775,11 @@ namespace PPBTool
             {
                 Fill(r, color);
             }
+
+            if (block.Locked)
+            {
+                Border(r, new Color(1f, 0.25f, 0.22f, 0.9f), 1f);
+            }
         }
 
         private void DrawWallQuad(Texture[] textures, int index, Rect r, Color color)
@@ -1840,6 +1845,11 @@ namespace PPBTool
             float pad = Mathf.Max(1f, cell * 0.09f);
             var inner = new Rect(r.x + pad, r.y + pad, r.width - pad * 2f, r.height - pad * 2f);
             if (inner.width < 4f || inner.height < 4f || sub.width <= 0 || sub.height <= 0)
+            {
+                return;
+            }
+
+            if (sub.width * sub.height > 1600)
             {
                 return;
             }
@@ -2102,7 +2112,7 @@ namespace PPBTool
                 sat *= 0.76f;
             }
 
-            val = Mathf.Clamp(val, 0.05f, 1f);
+            val = Mathf.Clamp(val, 0.12f, 1f);
             return Hsv(hue, sat, val);
         }
 
@@ -2828,7 +2838,15 @@ namespace PPBTool
             if (texGradient == null)
             {
                 texGradient = GetPrivateTexture("CenterGradientTex");
+            }
+
+            if (texInf == null)
+            {
                 texInf = GetPrivateTexture("InfParticleTex");
+            }
+
+            if (texInfOutline == null)
+            {
                 texInfOutline = GetPrivateTexture("InfParticleOutlineTex");
             }
 
