@@ -332,21 +332,21 @@ Stack<LevelReference> navRefs;
   - 这解决“树只有一个父节点”的显示限制。
 - Go to Reference 优先 stack；没有 stack 时：0 个引用禁用、1 个直接去、多个打开 Reference chooser；不自动使用 `PreferredBack` 盲猜。
 
-### 5.4 无引用层级的背景
+### 5.4 无引用 / 无 primary 的箱子背景
 
 新增 `ResolveLevelColor(Level level)`：
 
-1. `level.BlocksWithThisAsTheirSubLevel.Count > 0` → `GetExitBlock()` 的颜色（现有逻辑）。
-2. 否则扫描 `level.blockList`：
-   - 优先有非零 `hue/sat/val` 的箱子/玩家块；
-   - 取第一个可用的 `GameBlockColor`。
-3. 否则使用 `Hub.puzzleData[World.currentLevelName].palette.root` 的 HSV（若可用）。
-4. 否则使用中性深色 `new Color(0.16, 0.18, 0.22)`，**不再纯黑**。
+1. `GetExitBlock()` 非 null → 它的颜色；
+2. **即使 `refs > 0`，`GetExitBlock()` 也可能为 null**（第一个引用为 null/失效）→ 继续 fallback：
+   - 扫描 `level.blockList`，取第一个非零 `hue/sat/val` 的箱子/玩家块；
+   - 否则 `Hub.puzzleData[World.currentLevelName].palette.root`；
+   - 否则中性色 `new Color(0.22, 0.24, 0.30)`，并保证不要低于可见阈值。
+3. 不能只在 `refs == 0` 时走 fallback；`visualOwner == null` 就必须走 `ResolveLevelColor`。
 
 - 背景只用于箱子内部/当前层网格；箱子外仍黑。
-- 无引用层级的 Back：禁用，提示“无外层引用”。
+- 无 `CanBack` 引用时 Back 禁用并提示“无外层引用”（这是引用导航，不是背景）。
 - 在 `LogSceneTree` 或新诊断里打印：
-  `level=..., refs=0, fallback=block/palette/neutral`。
+  `level=..., refs=N, primary=null, fallback=block/palette/neutral`。
 
 ### 5.5 无限标签重做
 

@@ -1937,7 +1937,7 @@ namespace PPBTool
                     GUI.EndGroup();
                 }
             }
-            else if (graph.GetReferences(level).Count == 0)
+            else if (visualOwner == null)
             {
                 Fill(new Rect(localX, localY, gridW, gridH), ResolveLevelColor(level, bgCell));
             }
@@ -3141,10 +3141,12 @@ namespace PPBTool
 
         private Color ResolveLevelColor(Level level, int cell)
         {
+            Color fallback = new Color(0.22f, 0.24f, 0.30f, 1f);
             Block owner = LevelGraph.ExitBlockOf(level);
             if (owner != null)
             {
-                return GameBlockColor(owner, cell);
+                Color ownerColor = GameBlockColor(owner, cell);
+                return EnsureVisibleBackground(ownerColor, fallback);
             }
 
             if (level != null && level.blockList != null)
@@ -3153,7 +3155,7 @@ namespace PPBTool
                 {
                     if (block != null && (block.val > 0.0001f || block.sat > 0.0001f))
                     {
-                        return GameBlockColor(block, cell);
+                        return EnsureVisibleBackground(GameBlockColor(block, cell), fallback);
                     }
                 }
             }
@@ -3171,14 +3173,26 @@ namespace PPBTool
                     Hub.HSV hsv = Hub.palettes[data.palette].root;
                     Color color = Color.HSVToRGB(hsv.hue, hsv.sat, hsv.val);
                     color.a = 1f;
-                    return color;
+                    return EnsureVisibleBackground(color, fallback);
                 }
             }
             catch
             {
             }
 
-            return new Color(0.16f, 0.18f, 0.22f, 1f);
+            return fallback;
+        }
+
+        private static Color EnsureVisibleBackground(Color color, Color fallback)
+        {
+            color.a = 1f;
+            if (color.maxColorComponent < 0.16f)
+            {
+                color = Color.Lerp(color, fallback, 0.65f);
+                color.a = 1f;
+            }
+
+            return color;
         }
 
         private Color LevelBackgroundColor(Level level)
