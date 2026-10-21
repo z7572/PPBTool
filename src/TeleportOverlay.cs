@@ -2046,7 +2046,9 @@ namespace PPBTool
                     break;
 
                 case Floor.FloorType.PlayerButton:
-                    DrawButtonBorder(r, color);
+                    Color playerButtonBorder = color;
+                    playerButtonBorder.a = 1f;
+                    DrawButtonBorder(r, playerButtonBorder);
                     Color eyeTint = Color.Lerp(color, Color.white, 0.45f);
                     eyeTint.a = 1f;
                     // The eye texture has its own alpha; draw twice so the icon's
@@ -2056,7 +2058,9 @@ namespace PPBTool
                     break;
 
                 case Floor.FloorType.Info:
-                    DrawButtonBorder(r, color);
+                    Color infoBorder = color;
+                    infoBorder.a = 1f;
+                    DrawButtonBorder(r, infoBorder);
                     Color infoTint = Color.white;
                     infoTint.a = 1f;
                     DrawGameTexture(r, texInfo, texInfo, infoTint, 0.9f);
@@ -2275,9 +2279,11 @@ namespace PPBTool
             // A wall carries its own color; only completely black/invalid walls
             // need the level exit block as a fallback. This also keeps a possessed
             // wall's color instead of painting it as a player square.
-            Block colorSource = block.val > 0.0001f || block.sat > 0.0001f
+            Block colorSource = block.IsPlayer
                 ? block
-                : (owner ?? block);
+                : (block.val > 0.0001f || block.sat > 0.0001f
+                    ? block
+                    : (owner ?? block));
             bool possessedWall = block.IsPlayer && !block.IsPlayerStart;
             Color color = block.IsPlayer && !possessedWall
                 ? GamePlayerColor(block, cell)
@@ -2696,6 +2702,19 @@ namespace PPBTool
             }
 
             border.a = 0.12f;
+            bool flashingExit = sub != null
+                && (block.IsSomeInfExitBlock
+                    || (block.OuterLevel != null
+                        && block.OuterLevel.InfZone
+                        && !sub.FilledWithWalls
+                        && block.SpecialEffect != 12));
+            if (flashingExit)
+            {
+                float t = QuadOscillate(Time.unscaledTime * 0.3f);
+                border = Hsv(0.15f, 1f, Mathf.Lerp(0.65f, 1f, t));
+                border.a = 0.9f;
+            }
+
             if (block.Locked)
             {
                 border = Color.red;
@@ -2926,6 +2945,14 @@ namespace PPBTool
             return value < 0.5f
                 ? 2f * value * value
                 : 1f - 2f * (1f - value) * (1f - value);
+        }
+
+        private static float QuadOscillate(float value)
+        {
+            value -= Mathf.Floor(value);
+            return value < 0.5f
+                ? QuadInOut(value * 2f)
+                : QuadInOut(1f - (value - 0.5f) * 2f);
         }
 
         private void DrawInfSymbols(Rect r, Block block, int cell, int depth)
