@@ -1,17 +1,13 @@
 using System;
-using System.Collections.Generic;
-using System.Globalization;
 using BepInEx.Configuration;
-using UnityEngine.InputSystem;
+using UnityEngine;
 
 namespace PPBTool
 {
     internal sealed class ModConfig
     {
-        private static readonly HashSet<string> WarnedKeys = new HashSet<string>();
-
-        private readonly ConfigEntry<string> winLevelKey;
-        private readonly ConfigEntry<string> teleportKey;
+        private readonly ConfigEntry<KeyboardShortcut> winLevelKey;
+        private readonly ConfigEntry<KeyboardShortcut> teleportKey;
         private readonly ConfigEntry<bool> closeAfterTeleport;
         private readonly ConfigEntry<bool> undoable;
         private readonly ConfigEntry<int> cellSize;
@@ -23,14 +19,14 @@ namespace PPBTool
         public ModConfig(ConfigFile config)
         {
             winLevelKey = config.Bind(
-                "Keys", "WinLevel", "F7",
-                "Hotkey for instantly completing the current level (normal win flow). " +
-                "Any UnityEngine.InputSystem.Key name, e.g. F7, F8, K, Numpad5, or None.");
+                "Keys", "WinLevel", new KeyboardShortcut(KeyCode.F7),
+                "Keyboard shortcut for instantly completing the current level. " +
+                "BepInEx KeyboardShortcut syntax, e.g. F7, Ctrl+F7, Shift+F8.");
 
             teleportKey = config.Bind(
-                "Keys", "Teleport", "F8",
-                "Hotkey for opening/closing the teleport map browser. " +
-                "Any UnityEngine.InputSystem.Key name, e.g. F7, F8, K, Numpad5, or None.");
+                "Keys", "Teleport", new KeyboardShortcut(KeyCode.F8),
+                "Keyboard shortcut for opening/closing the teleport map browser. " +
+                "BepInEx KeyboardShortcut syntax, e.g. F8, Ctrl+F8, Shift+F8.");
 
             closeAfterTeleport = config.Bind(
                 "Teleport", "CloseAfterTeleport", true,
@@ -110,102 +106,12 @@ namespace PPBTool
 
         public bool WinPressed()
         {
-            return WasPressed(winLevelKey.Value);
+            return winLevelKey.Value.IsDown();
         }
 
         public bool TeleportPressed()
         {
-            return WasPressed(teleportKey.Value);
-        }
-
-        private static bool WasPressed(string raw)
-        {
-            if (!TryParseKey(raw, out Key key))
-            {
-                if (WarnedKeys.Add(raw ?? string.Empty))
-                {
-                    Log.Warn("Unknown hotkey '" + raw + "'; expected a UnityEngine.InputSystem.Key name.");
-                }
-
-                return false;
-            }
-
-            if (key == Key.None)
-            {
-                return false;
-            }
-
-            Keyboard keyboard = Keyboard.current;
-            return keyboard != null && keyboard[key].wasPressedThisFrame;
-        }
-
-        public static bool TryParseKey(string raw, out Key key)
-        {
-            key = Key.None;
-            if (string.IsNullOrWhiteSpace(raw))
-            {
-                return false;
-            }
-
-            string text = raw.Trim();
-            if (text.Equals("none", StringComparison.OrdinalIgnoreCase)
-                || text.Equals("off", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            // Accept "F7", "f7", "Numpad5" and the enum's own names.
-            foreach (string candidate in new[] { text, Normalize(text) })
-            {
-                if (Enum.TryParse(candidate, true, out key) && key != Key.None)
-                {
-                    return true;
-                }
-            }
-
-            // Accept single digit characters as top-row digits.
-            if (text.Length == 1 && char.IsDigit(text[0]))
-            {
-                return Enum.TryParse("Digit" + text, true, out key);
-            }
-
-            // A few friendly aliases.
-            switch (text.ToLowerInvariant())
-            {
-                case "return":
-                    key = Key.Enter;
-                    return true;
-                case "esc":
-                    key = Key.Escape;
-                    return true;
-                case "space":
-                    key = Key.Space;
-                    return true;
-                case "pgup":
-                    key = Key.PageUp;
-                    return true;
-                case "pgdn":
-                    key = Key.PageDown;
-                    return true;
-            }
-
-            return false;
-        }
-
-        private static string Normalize(string text)
-        {
-            if (text.Length == 1)
-            {
-                return text.ToUpper(CultureInfo.InvariantCulture);
-            }
-
-            if ((text[0] == 'f' || text[0] == 'F') && int.TryParse(text.Substring(1), out int fn)
-                && fn >= 1 && fn <= 24)
-            {
-                return "F" + fn.ToString(CultureInfo.InvariantCulture);
-            }
-
-            return text;
+            return teleportKey.Value.IsDown();
         }
     }
 }

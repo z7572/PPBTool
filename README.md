@@ -46,7 +46,8 @@ LogSceneTree = false
 LogInfSymbols = false       ; 记录无限符号判定（排查 hub 显示差异）
 ```
 
-- 热键接受 `UnityEngine.InputSystem.Key` 名称（`F7`、`K`、`Numpad5`、`Digit7`…），`None` 禁用。
+- 热键使用 BepInEx `KeyboardShortcut`：`F7`、`K`、`Ctrl+F7`、`Shift+F8` 等；在配置界面清空快捷键即可禁用。
+- 旧配置里的 `F7` / `F8` 可以直接迁移；旧 InputSystem 名称如 `Numpad5` / `Digit7` 建议在配置界面重新选择（BepInEx 使用 `Keypad5` / `Alpha7`）。
 - 显示开关也可在工具栏里切换，并即时写回配置。
 
 ## 使用
