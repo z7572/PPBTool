@@ -86,17 +86,39 @@ namespace PPBTool
             };
 
         private static string language;
+        private static string languageMode = "auto";
 
-        /// <summary>Re-read the game language (called when the browser opens).</summary>
-        public static void Refresh()
+        /// <summary>auto / zh / en. Auto follows the game's Prefs.Language.</summary>
+        public static void SetLanguage(string mode)
         {
+            string value = (mode ?? string.Empty).Trim().ToLowerInvariant();
+            languageMode = value == "zh" || value == "en" ? value : "auto";
             language = null;
         }
 
-        private static bool IsChinese
+        /// <summary>Re-read the game language when in auto mode.</summary>
+        public static void Refresh()
+        {
+            if (languageMode == "auto")
+            {
+                language = null;
+            }
+        }
+
+        public static bool IsChinese
         {
             get
             {
+                if (languageMode == "zh")
+                {
+                    return true;
+                }
+
+                if (languageMode == "en")
+                {
+                    return false;
+                }
+
                 if (language == null)
                 {
                     try
@@ -117,6 +139,11 @@ namespace PPBTool
                 string lower = language.ToLowerInvariant();
                 return lower.Contains("zh") || lower.Contains("cn") || lower.Contains("chinese");
             }
+        }
+
+        public static string ToggleLabel
+        {
+            get { return IsChinese ? "EN" : "中文"; }
         }
 
         public static string Get(string key)

@@ -15,6 +15,7 @@ namespace PPBTool
         private readonly ConfigEntry<bool> levelThumbnails;
         private readonly ConfigEntry<bool> logSceneTree;
         private readonly ConfigEntry<bool> logInfSymbols;
+        private readonly ConfigEntry<string> language;
 
         public ModConfig(ConfigFile config)
         {
@@ -64,6 +65,11 @@ namespace PPBTool
                 "Diagnostics", "LogInfSymbols", false,
                 "Log infinity symbol decisions (block, parent, count, depth, DrawStyle). " +
                 "Useful when the game and map disagree about Infinite Enter/Exit symbols.");
+
+            language = config.Bind(
+                "UI", "Language", "auto",
+                "UI language: auto (follow the game), zh, or en. The toolbar switch " +
+                "persists the chosen language.");
         }
 
         // Read live values so ConfigurationManager edits apply without a restart.
@@ -102,6 +108,12 @@ namespace PPBTool
         public bool LogInfSymbols
         {
             get { return logInfSymbols.Value; }
+        }
+
+        public string Language
+        {
+            get { return language.Value; }
+            set { language.Value = value; }
         }
 
         public bool WinPressed()

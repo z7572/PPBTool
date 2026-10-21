@@ -44,10 +44,14 @@ LevelThumbnails = true     ; 关卡缩略图（默认开）
 [Diagnostics]
 LogSceneTree = false
 LogInfSymbols = false       ; 记录无限符号判定（排查 hub 显示差异）
+
+[UI]
+Language = auto             ; auto / zh / en
 ```
 
 - 热键使用 BepInEx `KeyboardShortcut`：`F7`、`K`、`Ctrl+F7`、`Shift+F8` 等；在配置界面清空快捷键即可禁用。
 - 旧配置里的 `F7` / `F8` 可以直接迁移；旧 InputSystem 名称如 `Numpad5` / `Digit7` 建议在配置界面重新选择（BepInEx 使用 `Keypad5` / `Alpha7`）。
+- 界面语言初始为 `auto`，跟随游戏语言；工具栏最右侧按钮可在中文/English 间切换，并写回 `[UI] Language`。
 - 显示开关也可在工具栏里切换，并即时写回配置。
 
 ## 使用

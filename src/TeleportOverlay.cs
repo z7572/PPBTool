@@ -257,6 +257,7 @@ namespace PPBTool
                 return;
             }
 
+            UiText.SetLanguage(config.Language);
             UiText.Refresh();
             portalCache.Clear();
             infLogSeen.Clear();
@@ -1509,6 +1510,24 @@ namespace PPBTool
             x = ToolButton(x, y, UiText.Get("collapse_all"), true, false, CollapseAll) + 6f;
             x = ToolButton(x, y, UiText.Get("expand_all"), true, false, ExpandAll) + 6f;
             ToolButton(x, y, UiText.Get("refresh"), true, false, () => RebuildGraph(true));
+
+            // Language switch is always pinned to the far right of the menu bar.
+            string languageLabel = UiText.ToggleLabel;
+            float languageWidth = buttonStyle.CalcSize(new GUIContent(languageLabel)).x + 16f;
+            ToolButton(
+                rect.xMax - Margin - languageWidth,
+                y,
+                languageLabel,
+                true,
+                false,
+                ToggleLanguage);
+        }
+
+        private void ToggleLanguage()
+        {
+            config.Language = UiText.IsChinese ? "en" : "zh";
+            UiText.SetLanguage(config.Language);
+            UiText.Refresh();
         }
 
         private float ToolButton(float x, float y, string text, bool enabled, bool on, Action action)
