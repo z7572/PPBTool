@@ -70,6 +70,7 @@ namespace PPBTool
                 { "win_done", new[] { "已触发通关结算", "level completion triggered" } },
                 { "win_no_level", new[] { "没有加载关卡", "no level loaded" } },
                 { "flags", new[] { "属性", "flags" } },
+                { "hover", new[] { "悬停", "Hover" } },
                 { "floor_gallery", new[] { "画廊地砖", "Gallery" } },
                 { "floor_demo", new[] { "Demo 结束", "Demo end" } },
                 { "floor_smile", new[] { "笑脸地砖", "Smile" } },

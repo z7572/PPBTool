@@ -13,7 +13,7 @@ namespace PPBTool
     /// </summary>
     internal sealed class TeleportOverlay
     {
-        private const float HeaderH = 58f;
+        private const float HeaderH = 78f;
         private const float ToolbarH = 42f;
         private const float FooterH = 64f;
         private const float Margin = 12f;
@@ -108,11 +108,18 @@ namespace PPBTool
         private float zoom = 1f;
         private Vector2 pan;
         private float treeScroll;
-        private Rect lastTreeView;
+        private float treeScrollX;
+        private float treeContentW;
+        private float treeWidth;
         private bool draggingThumb;
+        private bool draggingHThumb;
+        private bool draggingSplitter;
         private float thumbGrab;
+        private float hThumbGrab;
+        private Rect lastTreeView;
         private Rect lastCanvas;
         private Rect lastGrid;
+        private int lastCell = 1;
         private Vector2 lastMouse = new Vector2(-1f, -1f);
         private bool cursorWasVisible = true;
         private bool mapPressed;
@@ -137,6 +144,10 @@ namespace PPBTool
         private int landingX;
         private int landingY;
         private bool landingValid;
+
+        private Block hoveredBlock;
+        private int hoveredX;
+        private int hoveredY;
 
         public TeleportOverlay(ModConfig config, TeleportService teleporter)
         {
@@ -205,6 +216,10 @@ namespace PPBTool
 
             UiText.Refresh();
             portalCache.Clear();
+            hoveredBlock = null;
+            lastCanvas = default(Rect);
+            lastGrid = default(Rect);
+            lastCell = 0;
             savedState = World.State;
             hideVoid = config.HideVoidBoxes;
             usePalette = config.UseLevelPalette;
@@ -275,6 +290,7 @@ namespace PPBTool
             open = false;
             showInfMenu = false;
             showInfConfirm = false;
+            hoveredBlock = null;
             suppressFrames = 2;
             Cursor.visible = cursorWasVisible;
             World.State = savedState == World.WS.Initializing ? World.WS.Playing : savedState;
@@ -305,6 +321,8 @@ namespace PPBTool
             }
 
             landingLevel = null;
+            hoveredBlock = null;
+            lastCell = 0;
 
             graph.Build();
             sceneAtBuild = World.currentLevelName;
@@ -489,6 +507,8 @@ namespace PPBTool
             selectedNode = node;
             zoom = 1f;
             pan = Vector2.zero;
+            hoveredBlock = null;
+            lastCell = 0;
             PlaceCursorAtDefault(node);
             ScrollToSelection();
             showInfMenu = false;
@@ -642,6 +662,7 @@ namespace PPBTool
             Mouse mouse = Mouse.current;
             if (mouse == null)
             {
+                hoveredBlock = null;
                 return;
             }
 
@@ -653,13 +674,44 @@ namespace PPBTool
                 float notches = Mathf.Clamp(wheel / 120f, -3f, 3f);
                 if (lastTreeView.Contains(guiMouse))
                 {
-                    treeScroll -= notches * 60f;
-                    ClampTreeScroll();
+                    bool shift = keyboard.leftShiftKey.isPressed || keyboard.rightShiftKey.isPressed;
+                    if (shift)
+                    {
+                        treeScrollX -= notches * 80f;
+                        ClampTreeScrollX();
+                    }
+                    else
+                    {
+                        treeScroll -= notches * 60f;
+                        ClampTreeScroll();
+                    }
                 }
                 else if (lastCanvas.Contains(guiMouse))
                 {
-                    ZoomAt(guiMouse, notches > 0f ? 0.9f : 1.1f);
+                    // Scroll up (positive) zooms in: larger cell size.
+                    ZoomAt(guiMouse, notches > 0f ? 1.1f : 0.9f);
                 }
+            }
+
+            UpdateHover(guiMouse);
+        }
+
+        private void UpdateHover(Vector2 guiMouse)
+        {
+            hoveredBlock = null;
+            Level level = selectedNode != null ? selectedNode.Level : null;
+            if (level == null || lastCell <= 0 || !lastCanvas.Contains(guiMouse))
+            {
+                return;
+            }
+
+            int x;
+            int y;
+            if (TryCell(level, lastGrid.x, lastGrid.y, lastCell, guiMouse, out x, out y))
+            {
+                hoveredBlock = level.blocks[x, y];
+                hoveredX = x;
+                hoveredY = y;
             }
         }
 
@@ -910,10 +962,23 @@ namespace PPBTool
 
             float bodyTop = HeaderH + ToolbarH + Margin;
             float bodyH = Mathf.Max(100f, h - FooterH - bodyTop - Margin);
-            float treeW = Mathf.Clamp(w * 0.30f, 320f, 470f);
-            var treeRect = new Rect(Margin, bodyTop, treeW, bodyH);
-            var mapRect = new Rect(treeRect.xMax + Gap, bodyTop, w - treeW - Margin * 2f - Gap, bodyH);
+            if (treeWidth <= 0f)
+            {
+                treeWidth = Mathf.Clamp(w * 0.30f, 320f, 470f);
+            }
 
+            treeWidth = Mathf.Clamp(treeWidth, 240f, Mathf.Max(260f, w * 0.55f));
+            var treeRect = new Rect(Margin, bodyTop, treeWidth, bodyH);
+            var splitter = new Rect(treeRect.xMax, bodyTop, 6f, bodyH);
+            HandleSplitter(splitter, w);
+
+            var mapRect = new Rect(
+                splitter.xMax + Gap,
+                bodyTop,
+                Mathf.Max(120f, w - treeWidth - Margin * 2f - 6f - Gap),
+                bodyH);
+
+            DrawSplitter(splitter);
             DrawTree(treeRect);
             if (open)
             {
@@ -942,7 +1007,8 @@ namespace PPBTool
             var rect = new Rect((Screen.width - width) * 0.5f, 18f, width, 36f);
             Fill(rect, new Color(0.07f, 0.08f, 0.11f, 0.95f));
             Border(rect, messageIsError ? new Color(1f, 0.45f, 0.4f, 1f) : new Color(0.5f, 0.9f, 0.6f, 1f), 1f);
-            GUI.Label(new Rect(rect.x + 14f, rect.y + 4f, rect.width - 28f, 28f), message, statusStyle);
+            GUI.Label(new Rect(rect.x + 14f, rect.y + 4f, rect.width - 28f, 28f),
+                Ellipsize(message, statusStyle, rect.width - 28f), statusStyle);
         }
 
         private void DrawHeader(Rect rect)
@@ -950,27 +1016,74 @@ namespace PPBTool
             Fill(rect, Header);
             Fill(new Rect(rect.x, rect.yMax - 1f, rect.width, 1f), Edge);
 
-            GUI.Label(new Rect(rect.x + 16f, rect.y + 4f, 360f, 28f), UiText.Get("title"), titleStyle);
+            GUI.Label(new Rect(rect.x + 16f, rect.y + 4f, 360f, 26f), UiText.Get("title"), titleStyle);
 
             string sceneName = sceneAtBuild == "custom_level" ? graph.SceneLabel : sceneAtBuild;
             string scene = UiText.Get("scene") + ": " + sceneName
                 + "    " + UiText.Get("levels") + ": " + graph.AllNodes.Count()
                 + " / " + rows.Count;
-            GUI.Label(new Rect(rect.x + 16f, rect.y + 32f, 470f, 22f), scene, smallStyle);
+            GUI.Label(new Rect(rect.x + 16f, rect.y + 30f, 400f, 20f),
+                Ellipsize(scene, smallStyle, 390f), smallStyle);
 
             if (selectedNode != null)
             {
                 float x = rect.x + 430f;
                 float width = Mathf.Max(120f, rect.width - x - 130f);
-                GUI.Label(new Rect(x, rect.y + 5f, width, 24f),
-                    UiText.Get("level") + ": " + selectedNode.Path, labelStyle);
-                GUI.Label(new Rect(x, rect.y + 31f, width, 20f), selectedNode.Subtitle, smallStyle);
+                GUI.Label(new Rect(x, rect.y + 4f, width, 24f),
+                    Ellipsize(UiText.Get("level") + ": " + selectedNode.Path, labelStyle, width),
+                    labelStyle);
+                GUI.Label(new Rect(x, rect.y + 30f, width, 20f),
+                    Ellipsize(selectedNode.Subtitle, smallStyle, width), smallStyle);
             }
 
-            if (GUI.Button(new Rect(rect.xMax - 104f, rect.y + 13f, 90f, 30f), UiText.Get("close"), buttonStyle))
+            if (hoveredBlock != null)
+            {
+                string flags = LevelGraph.BlockFlags(hoveredBlock);
+                string kind = hoveredBlock.SubLevel != null
+                    ? UiText.Get("legend_box")
+                    : UiText.Get("legend_wall");
+                string hover = UiText.Get("hover") + ": (" + hoveredX + "," + hoveredY + ") " + kind
+                    + (string.IsNullOrEmpty(flags) ? string.Empty : " · " + flags);
+                GUI.Label(new Rect(rect.x + 16f, rect.y + 52f, rect.width - 150f, 20f),
+                    Ellipsize(hover, smallStyle, rect.width - 160f), smallStyle);
+            }
+
+            if (GUI.Button(new Rect(rect.xMax - 104f, rect.y + 24f, 90f, 30f), UiText.Get("close"), buttonStyle))
             {
                 Close();
             }
+        }
+
+        private static string Ellipsize(string text, GUIStyle style, float maxWidth)
+        {
+            if (string.IsNullOrEmpty(text) || maxWidth <= 4f || style == null)
+            {
+                return text ?? string.Empty;
+            }
+
+            if (style.CalcSize(new GUIContent(text)).x <= maxWidth)
+            {
+                return text;
+            }
+
+            const string suffix = "...";
+            int low = 0;
+            int high = text.Length;
+            while (low < high)
+            {
+                int mid = (low + high + 1) / 2;
+                string candidate = text.Substring(0, mid) + suffix;
+                if (style.CalcSize(new GUIContent(candidate)).x <= maxWidth)
+                {
+                    low = mid;
+                }
+                else
+                {
+                    high = mid - 1;
+                }
+            }
+
+            return low <= 0 ? suffix : text.Substring(0, low) + suffix;
         }
 
         private void DrawToolbar(Rect rect)
@@ -1030,7 +1143,7 @@ namespace PPBTool
             GUI.Label(new Rect(panel.x + 10f, panel.y + 5f, panel.width - 20f, 20f),
                 UiText.Get("levels") + "  (" + rows.Count + ")", sectionStyle);
 
-            Rect view = new Rect(panel.x + 6f, panel.y + 28f, panel.width - 20f, panel.height - 34f);
+            Rect view = new Rect(panel.x + 6f, panel.y + 28f, panel.width - 20f, panel.height - 34f - 12f);
             lastTreeView = view;
             if (rows.Count == 0)
             {
@@ -1041,6 +1154,24 @@ namespace PPBTool
             float contentH = rows.Count * RowH;
             float maxScroll = Mathf.Max(0f, contentH - view.height);
             treeScroll = Mathf.Clamp(treeScroll, 0f, maxScroll);
+
+            float contentW = view.width;
+            foreach (LevelNode rowNode in rows)
+            {
+                float titleW = labelStyle.CalcSize(new GUIContent(rowNode.Title)).x;
+                float tagsW = string.IsNullOrEmpty(rowNode.Tags)
+                    ? 0f
+                    : smallStyle.CalcSize(new GUIContent("[" + rowNode.Tags + "]")).x + 8f;
+                float need = 24f + rowNode.Depth * 13f + titleW + tagsW + 90f;
+                if (need > contentW)
+                {
+                    contentW = need;
+                }
+            }
+
+            treeContentW = contentW;
+            float maxScrollX = Mathf.Max(0f, contentW - view.width);
+            treeScrollX = Mathf.Clamp(treeScrollX, 0f, maxScrollX);
 
             Event e = Event.current;
             Vector2 localMouse = e != null ? e.mousePosition - view.position : new Vector2(-1000f, -1000f);
@@ -1079,28 +1210,33 @@ namespace PPBTool
                 bool treeInput = !showInfMenu && !showInfConfirm;
                 if (node.Children.Count > 0)
                 {
-                    var arrow = new Rect(4f + node.Depth * 13f, y + 4f, 14f, 14f);
-                    if (treeInput && GUI.Button(arrow, IsExpanded(node) ? "-" : "+", arrowStyle))
+                    float arrowX = 4f + node.Depth * 13f - treeScrollX;
+                    var arrow = new Rect(arrowX, y + 4f, 14f, 14f);
+                    if (treeInput && arrow.xMax > 0f && arrow.x < view.width
+                        && GUI.Button(arrow, IsExpanded(node) ? "-" : "+", arrowStyle))
                     {
                         deferredToggle = node;
                     }
                 }
 
-                var hitX = node.Children.Count > 0 ? 20f + node.Depth * 13f : 4f;
-                var hit = new Rect(hitX, y, Mathf.Max(1f, view.width - hitX), RowH - 1f);
-                if (treeInput && GUI.Button(hit, GUIContent.none, catchStyle))
+                float hitX = (node.Children.Count > 0 ? 20f : 4f) + node.Depth * 13f - treeScrollX;
+                if (hitX < view.width)
                 {
-                    deferredSelect = node;
+                    var hit = new Rect(hitX, y, Mathf.Max(1f, contentW - hitX), RowH - 1f);
+                    if (treeInput && GUI.Button(hit, GUIContent.none, catchStyle))
+                    {
+                        deferredSelect = node;
+                    }
                 }
 
-                float textX = 24f + node.Depth * 13f;
+                float textX = 24f + node.Depth * 13f - treeScrollX;
                 Color oldColor = GUI.color;
                 if (node.ContainsPlayer)
                 {
                     GUI.color = PlayerCol;
                 }
 
-                GUI.Label(new Rect(textX, y, Mathf.Max(1f, view.width - textX - 80f), RowH - 1f),
+                GUI.Label(new Rect(textX, y, Mathf.Max(1f, contentW - textX - 80f), RowH - 1f),
                     node.Title, labelStyle);
                 GUI.color = oldColor;
 
@@ -1108,9 +1244,9 @@ namespace PPBTool
                 {
                     float tw = labelStyle.CalcSize(new GUIContent(node.Title)).x;
                     float tagsX = textX + tw + 6f;
-                    if (tagsX < view.width - 90f)
+                    if (tagsX < view.width - 10f)
                     {
-                        GUI.Label(new Rect(tagsX, y, view.width - tagsX - 80f, RowH - 1f),
+                        GUI.Label(new Rect(tagsX, y, Mathf.Max(1f, contentW - tagsX - 80f), RowH - 1f),
                             "[" + node.Tags + "]", smallStyle);
                     }
                 }
@@ -1126,6 +1262,11 @@ namespace PPBTool
             if (maxScroll > 0f)
             {
                 DrawTreeScrollbar(panel, view, contentH, maxScroll);
+            }
+
+            if (maxScrollX > 0f)
+            {
+                DrawTreeHScrollbar(panel, view, contentW, maxScrollX);
             }
 
             // Mutating rows while iterating it would corrupt the draw pass; do it after.
@@ -1186,11 +1327,108 @@ namespace PPBTool
             }
         }
 
+        private void DrawTreeHScrollbar(Rect panel, Rect view, float contentW, float maxScrollX)
+        {
+            var track = new Rect(view.x, view.yMax + 2f, view.width, 6f);
+            DrawTextureTinted(track, texTrack, Color.white);
+
+            float thumbW = Mathf.Max(28f, view.width * view.width / Mathf.Max(1f, contentW));
+            float t = maxScrollX > 0f ? treeScrollX / maxScrollX : 0f;
+            float thumbX = view.x + (view.width - thumbW) * t;
+            var thumb = new Rect(thumbX, track.y, thumbW, track.height);
+            DrawTextureTinted(thumb, texThumb, Color.white);
+
+            Event e = Event.current;
+            if (e == null || showInfMenu || showInfConfirm)
+            {
+                return;
+            }
+
+            Vector2 mouse = e.mousePosition;
+            if (e.type == EventType.MouseDown && e.button == 0)
+            {
+                if (thumb.Contains(mouse))
+                {
+                    draggingHThumb = true;
+                    hThumbGrab = mouse.x - thumb.x;
+                    e.Use();
+                }
+                else if (track.Contains(mouse))
+                {
+                    float target = (mouse.x - track.x - thumbW * 0.5f) / Mathf.Max(1f, track.width - thumbW);
+                    treeScrollX = Mathf.Clamp(target * maxScrollX, 0f, maxScrollX);
+                    draggingHThumb = true;
+                    hThumbGrab = thumbW * 0.5f;
+                    e.Use();
+                }
+            }
+            else if (e.type == EventType.MouseDrag && draggingHThumb && e.button == 0)
+            {
+                float target = (mouse.x - track.x - hThumbGrab) / Mathf.Max(1f, track.width - thumbW);
+                treeScrollX = Mathf.Clamp(target * maxScrollX, 0f, maxScrollX);
+                e.Use();
+            }
+            else if (e.type == EventType.MouseUp && e.button == 0)
+            {
+                draggingHThumb = false;
+            }
+        }
+
+        private void HandleSplitter(Rect splitter, float screenWidth)
+        {
+            if (showInfMenu || showInfConfirm)
+            {
+                return;
+            }
+
+            Event e = Event.current;
+            if (e == null)
+            {
+                return;
+            }
+
+            Vector2 mouse = e.mousePosition;
+            if (e.type == EventType.MouseDown && e.button == 0 && splitter.Contains(mouse))
+            {
+                draggingSplitter = true;
+                e.Use();
+            }
+            else if (e.type == EventType.MouseDrag && draggingSplitter && e.button == 0)
+            {
+                treeWidth = Mathf.Clamp(
+                    mouse.x - Margin,
+                    240f,
+                    Mathf.Max(260f, screenWidth * 0.55f));
+                e.Use();
+            }
+            else if (e.type == EventType.MouseUp && e.button == 0)
+            {
+                draggingSplitter = false;
+            }
+        }
+
+        private void DrawSplitter(Rect splitter)
+        {
+            bool hover = draggingSplitter
+                || (Event.current != null && splitter.Contains(Event.current.mousePosition));
+            Color color = hover
+                ? new Color(0.35f, 0.80f, 0.95f, 1f)
+                : new Color(0.20f, 0.24f, 0.30f, 1f);
+            Fill(new Rect(splitter.center.x - 1f, splitter.y + 4f, 2f, Mathf.Max(1f, splitter.height - 8f)), color);
+        }
+
         private void ClampTreeScroll()
         {
             float viewH = lastTreeView.height > 0f ? lastTreeView.height : 400f;
             float maxScroll = Mathf.Max(0f, rows.Count * RowH - viewH);
             treeScroll = Mathf.Clamp(treeScroll, 0f, maxScroll);
+        }
+
+        private void ClampTreeScrollX()
+        {
+            float viewW = lastTreeView.width > 0f ? lastTreeView.width : 400f;
+            float maxScroll = Mathf.Max(0f, treeContentW - viewW);
+            treeScrollX = Mathf.Clamp(treeScrollX, 0f, maxScroll);
         }
 
         private void ScrollToSelection()
@@ -1206,6 +1444,7 @@ namespace PPBTool
                 index * RowH - viewH * 0.5f + RowH,
                 0f,
                 Mathf.Max(0f, rows.Count * RowH - viewH));
+            treeScrollX = 0f;
         }
 
         // -------------------------------------------------------------------- map
@@ -1228,7 +1467,7 @@ namespace PPBTool
             var detailRect = new Rect(panel.x + 6f, panel.y + 5f, panel.width - 12f, 24f);
             Fill(detailRect, Bar);
             GUI.Label(new Rect(detailRect.x + 8f, detailRect.y + 2f, detailRect.width - 16f, 20f),
-                BuildDetail(level), labelStyle);
+                Ellipsize(BuildDetail(level), labelStyle, detailRect.width - 16f), labelStyle);
 
             var canvas = new Rect(panel.x + 8f, panel.y + 32f, panel.width - 16f, panel.height - 32f - 38f);
             lastCanvas = canvas;
@@ -1246,6 +1485,7 @@ namespace PPBTool
                 canvas.width / Mathf.Max(1, level.width),
                 canvas.height / Mathf.Max(1, level.height));
             int cell = Mathf.Clamp(Mathf.FloorToInt(fit * 0.92f * zoom), 2, 400);
+            lastCell = cell;
             float gridW = cell * level.width;
             float gridH = cell * level.height;
 
@@ -1276,13 +1516,20 @@ namespace PPBTool
             int playerX = player != null && player.OuterLevel == level ? player.xpos : int.MinValue;
             int playerY = player != null && player.OuterLevel == level ? player.ypos : int.MinValue;
 
+            // Draw inside a clipped group so edge cells show their visible portion instead
+            // of disappearing entirely when zoomed/panned.
+            float localX = originX - canvas.x;
+            float localY = originY - canvas.y;
+            var localCanvas = new Rect(0f, 0f, canvas.width, canvas.height);
+
+            GUI.BeginGroup(canvas);
             for (int row = firstRow; row <= lastRow; row++)
             {
                 int y = level.height - 1 - row;
                 for (int x = firstCol; x <= lastCol; x++)
                 {
-                    var r = new Rect(originX + x * cell, originY + row * cell, cell, cell);
-                    if (!Inside(r, canvas))
+                    var r = new Rect(localX + x * cell, localY + row * cell, cell, cell);
+                    if (!Overlaps(r, localCanvas))
                     {
                         continue;
                     }
@@ -1319,21 +1566,22 @@ namespace PPBTool
             if (landingValid)
             {
                 int row = level.height - 1 - landingY;
-                var landing = new Rect(originX + landingX * cell, originY + row * cell, cell, cell);
-                if (Inside(landing, canvas) && !(landingX == playerX && landingY == playerY))
+                var landing = new Rect(localX + landingX * cell, localY + row * cell, cell, cell);
+                if (Overlaps(landing, localCanvas) && !(landingX == playerX && landingY == playerY))
                 {
                     Ring(landing, TargetCol, Mathf.Max(2f, cell * 0.08f));
                     Cross(landing, TargetCol);
                 }
             }
 
-            var gridRect = new Rect(originX - 1f, originY - 1f, gridW + 2f, gridH + 2f);
-            if (Inside(gridRect, canvas))
+            var gridRect = new Rect(localX - 1f, localY - 1f, gridW + 2f, gridH + 2f);
+            if (Overlaps(gridRect, localCanvas))
             {
                 Border(gridRect, new Color(0.36f, 0.42f, 0.50f, 0.9f), 1f);
             }
 
-            DrawCursor(level, originX, originY, cell, canvas);
+            DrawCursor(level, localX, localY, cell, localCanvas);
+            GUI.EndGroup();
             DrawLegend(panel, canvas);
         }
 
@@ -1597,8 +1845,44 @@ namespace PPBTool
                 return block.Possessable ? PossessCol : WallCol;
             }
 
+            Block levelOwner = LevelGraph.ExitBlockOf(block.OuterLevel);
+
+            // Wall blocks carry no colours of their own (LoadLevel only writes hue/sat/val
+            // for "Block" lines), so they must inherit the room/exit-block palette.
+            if (block.SubLevel == null)
+            {
+                float wallHue = levelOwner != null ? levelOwner.hue : block.hue;
+                float wallSat = levelOwner != null ? levelOwner.sat : block.sat;
+                float wallVal = levelOwner != null ? levelOwner.val : block.val;
+                wallVal = Mathf.Clamp01(wallVal * 2f);
+                if (wallVal < 0.28f)
+                {
+                    wallVal = 0.28f;
+                }
+
+                Color wall = Color.HSVToRGB(
+                    Mathf.Repeat(wallHue, 1f),
+                    Mathf.Clamp01(wallSat),
+                    wallVal);
+                if (block.IsPlayer)
+                {
+                    wall = Color.Lerp(wall, PlayerCol, 0.55f);
+                }
+
+                return wall;
+            }
+
+            float hue = block.hue;
             float sat = block.sat;
             float val = block.val;
+            if (Mathf.Approximately(val, 0f) && Mathf.Approximately(sat, 0f) && levelOwner != null)
+            {
+                hue = levelOwner.hue;
+                sat = levelOwner.sat;
+                val = levelOwner.val;
+            }
+
+            val = Mathf.Clamp01(val);
             if (block.IsSomeInfExitBlock)
             {
                 val *= 0.55f;
@@ -1610,7 +1894,7 @@ namespace PPBTool
             }
 
             Color color = Color.HSVToRGB(
-                Mathf.Repeat(block.hue, 1f),
+                Mathf.Repeat(hue, 1f),
                 Mathf.Clamp01(sat),
                 Mathf.Clamp01(val));
 
@@ -1672,7 +1956,7 @@ namespace PPBTool
 
             int row = level.height - 1 - cursorY;
             var r = new Rect(originX + cursorX * cell, originY + row * cell, cell, cell);
-            if (!Inside(r, canvas))
+            if (!Overlaps(r, canvas))
             {
                 return;
             }
@@ -1974,20 +2258,23 @@ namespace PPBTool
         {
             Fill(rect, Panel);
             Border(rect, Edge, 1f);
-            GUI.Label(new Rect(rect.x + 12f, rect.y + 6f, rect.width - 24f, 22f), UiText.Get("hint"), smallStyle);
+            GUI.Label(new Rect(rect.x + 12f, rect.y + 6f, rect.width - 24f, 22f),
+                Ellipsize(UiText.Get("hint"), smallStyle, rect.width - 24f), smallStyle);
 
             if (!string.IsNullOrEmpty(message) && Time.unscaledTime < messageUntil)
             {
                 Color old = GUI.color;
                 GUI.color = messageIsError ? new Color(1f, 0.5f, 0.45f, 1f) : new Color(0.55f, 0.95f, 0.65f, 1f);
-                GUI.Label(new Rect(rect.x + 12f, rect.y + 30f, rect.width - 24f, 24f), message, statusStyle);
+                GUI.Label(new Rect(rect.x + 12f, rect.y + 30f, rect.width - 24f, 24f),
+                    Ellipsize(message, statusStyle, rect.width - 24f), statusStyle);
                 GUI.color = old;
             }
             else if (selectedNode != null)
             {
                 string status = UiText.Get("level") + ": " + selectedNode.Title
                     + "   " + selectedNode.Subtitle;
-                GUI.Label(new Rect(rect.x + 12f, rect.y + 30f, rect.width - 24f, 24f), status, smallStyle);
+                GUI.Label(new Rect(rect.x + 12f, rect.y + 30f, rect.width - 24f, 24f),
+                    Ellipsize(status, smallStyle, rect.width - 24f), smallStyle);
             }
         }
 
@@ -2231,6 +2518,19 @@ namespace PPBTool
             arrowStyle.normal.textColor = Muted;
             arrowStyle.hover.textColor = Color.white;
 
+            titleStyle.wordWrap = false;
+            sectionStyle.wordWrap = false;
+            labelStyle.wordWrap = false;
+            smallStyle.wordWrap = false;
+            tinyStyle.wordWrap = false;
+            tinyCenterStyle.wordWrap = false;
+            statusStyle.wordWrap = false;
+            rightStyle.wordWrap = false;
+            centerLabelStyle.wordWrap = false;
+            bannerStyle.wordWrap = false;
+            buttonStyle.wordWrap = false;
+            arrowStyle.wordWrap = false;
+
             catchStyle = new GUIStyle(GUIStyle.none);
             catchStyle.normal.background = texClear;
             catchStyle.hover.background = texClear;
@@ -2414,6 +2714,12 @@ namespace PPBTool
         {
             return rect.x >= canvas.x && rect.y >= canvas.y
                 && rect.xMax <= canvas.xMax && rect.yMax <= canvas.yMax;
+        }
+
+        private static bool Overlaps(Rect rect, Rect canvas)
+        {
+            return rect.xMax > canvas.x && rect.x < canvas.xMax
+                && rect.yMax > canvas.y && rect.y < canvas.yMax;
         }
 
         // ------------------------------------------------------------------- zoom
