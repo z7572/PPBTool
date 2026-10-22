@@ -67,7 +67,7 @@ if (SubLevel != null && !SubLevel.BlocksWithThisAsTheirSubLevel.Contains(this))
 | Generated | `block.GeneratedInf` | 视情况 |
 | CustomHubs Ref | `OuterLevel != null`，可能不在当前树父链 | 是 |
 
-**关键**：同一个 Level 可以同时有 root owner、真实箱子、clone、∞进入/退出引用；v3 的树只保留一个 `PreferredParent`，所以 Back 必然丢失一部分引用。
+**关键**：同一个 Level 可以同时有 root owner、真实箱子、clone、无限进入/退出引用；v3 的树只保留一个 `PreferredParent`，所以 Back 必然丢失一部分引用。
 
 ### 3.3 游戏外层渲染怎么选引用
 
@@ -164,13 +164,13 @@ v3 `BuildTags` 同时加：
 
 含义：
 
-- 第一个 `Infinite Enter`：该节点的父引用是 ∞ 进入块；
-- `Infinite Enter←1`：`infInCounts[level] == 1`，即**有一个 ∞ 进入块以该层为 SubLevel**。
-- `←2`：有两个 ∞ 进入块指向同一层（多/二重无限进入）。
+- 第一个 `Infinite Enter`：该节点的父引用是 无限进入块；
+- `Infinite Enter←1`：`infInCounts[level] == 1`，即**有一个 无限进入块以该层为 SubLevel**。
+- `←2`：有两个 无限进入块指向同一层（多/二重无限进入）。
 
 但 `←` 不是“引用数”，也不是“层级深度”，v3 没有解释，且和父标签重复。
 
-`infOutCounts[level]` 则是**位于该层的 ∞ 退出块数量**（∞退出块通常位于虚空容器），不是“从该层出去的链接数”。v3 标签 `Infinite Exit←N` 同样容易误解。
+`infOutCounts[level]` 则是**位于该层的 无限退出块数量**（无限退出块通常位于虚空容器），不是“从该层出去的链接数”。v3 标签 `Infinite Exit←N` 同样容易误解。
 
 ### 4.4 无限符号显示不一致
 
@@ -303,7 +303,7 @@ Stack<LevelReference> navRefs;
     - 如果是从树直接打开 Box1 层级：没有 stack；Box1 的引用可能同时有 Box2、void 等，Back 打开 Reference chooser，选择 **Box2** 就能进入 Box2；
     - 循环 A→B→A→B 用 stack + 64 深度上限处理，不依赖树父链。
   - Box1 在游戏里的外层是虚空，但树里是根节点：
-    - `BlocksWithThisAsTheirSubLevel` 里有 `OuterLevel.InfZone` 的 ∞退出引用；
+    - `BlocksWithThisAsTheirSubLevel` 里有 `OuterLevel.InfZone` 的 无限退出引用；
     - 该引用 `CanBack == true`；Back/chooser 直接去那个虚空楼层，光标在虚空里的箱子引用。
   - Box1 在游戏里外层什么都没有：
     - 只有 `OuterLevel == null` 的 root owner，没有 `CanBack` 引用；
@@ -316,7 +316,7 @@ Stack<LevelReference> navRefs;
 - **自定义大厅**：因为枚举全部 `BlocksWithThisAsTheirSubLevel`，即使父引用不在树父链上，也能 Back；树只影响显示，不影响引用导航。
 - **根节点不等于无外层**：
   - `root node` 只表示树里没有“真实父箱”；
-  - 不代表没有虚空/∞退出引用；
+  - 不代表没有虚空/无限退出引用；
   - Back 以引用列表为准，不以 `ParentNode` 为准。
 
 ### 5.3 树显示
@@ -361,17 +361,17 @@ Infinite Exit ×1
 语义：
 
 - `refs ×N`：
-  `BlocksWithThisAsTheirSubLevel.Count`，包含 root owner、真实箱、clone、∞引用。
+  `BlocksWithThisAsTheirSubLevel.Count`，包含 root owner、真实箱、clone、无限引用。
 - `Infinite Enter ×N`：
-  `infInCounts[level]`，即**有多少个 ∞进入块以该层为 SubLevel**。
+  `infInCounts[level]`，即**有多少个 无限进入块以该层为 SubLevel**。
   - `×1` = 一个进入块指向它；
   - `×2` = 两个进入块指向同一层（二重/多重无限进入）。
 - `Infinite Exit ×N`：
-  `infOutCounts[level]`，即**该层里有多少个 ∞退出块**（通常虚空容器）。
+  `infOutCounts[level]`，即**该层里有多少个 无限退出块**（通常虚空容器）。
 - 父引用类型（`parent.IsSomeInfEnterBlock/Exit`）只在“引用/父级”一栏显示一次，不再和计数标签重复。
 - 详情面板显示解释 tooltip：
-  - “Enter links: ∞进入块指向该层的数量”
-  - “Exit links: 该层内 ∞退出块的数量”
+  - “Enter links: 无限进入块指向该层的数量”
+  - “Exit links: 该层内 无限退出块的数量”
   - “References: 引用该层的箱子总数（含 clone/∞/root）”
 
 ### 5.6 无限符号可见性
@@ -399,7 +399,7 @@ Infinite Exit ×1
      ```csharp
      !void.FilledWithWalls
      ```
-   - 不要用 `World.WentToInfZone` 或 `blockList.Count > 1` 作为地图符号门槛：从引用选择器进入 void 时玩家还没传送进去，符号也必须立即显示；玩家离开后仍显示。`Void 7x7 #2` 这类只有一个 ∞退出箱的虚空，实测 `blockList.Count` 可能是 1。`LogInfSymbols` 会记录 `parentBlocks`。
+   - 不要用 `World.WentToInfZone` 或 `blockList.Count > 1` 作为地图符号门槛：从引用选择器进入 void 时玩家还没传送进去，符号也必须立即显示；玩家离开后仍显示。`Void 7x7 #2` 这类只有一个 无限退出箱的虚空，实测 `blockList.Count` 可能是 1。`LogInfSymbols` 会记录 `parentBlocks`。
    - 不因为 `OuterLevel.InfZone` 一律跳过。
 4. **当前层是箱子内部**：
    - 父箱符号只在父层可见时覆盖到整个 boxRect；

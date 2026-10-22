@@ -11,9 +11,9 @@
 
 在层级浏览器里显示方块的特殊属性，重点是：
 
-- 玩家 / 可占据 / Player Order / Flip / Counting / 主出口块 / clone / ∞ 进入 / ∞ 退出 / SpecialEffect；
+- 玩家 / 可占据 / Player Order / Flip / Counting / 主出口块 / clone / 无限进入 / 无限退出 / SpecialEffect；
 - Player Order；
-- 方块是否为主出口块（exit block）/ clone / ∞ 进入 / ∞ 退出；
+- 方块是否为主出口块（exit block）/ clone / 无限进入 / 无限退出；
 - Counting 墙的 `numSolved / numRequired`；
 - `specialeffect` 的数值和语义；
 - 浮空（float in space）的显示；
