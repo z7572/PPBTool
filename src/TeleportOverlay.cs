@@ -1903,7 +1903,7 @@ namespace PPBTool
                 panel.x + 8f,
                 panel.y + 32f + mechanicsH,
                 panel.width - 16f,
-                panel.height - 32f - 8f - mechanicsH);
+                Mathf.Max(20f, panel.height - 32f - 8f - mechanicsH));
             lastCanvas = canvas;
 
             Fill(canvas, MapBackground(level));
