@@ -1,7 +1,7 @@
 # PPBTool 方块特殊属性显示设计
 
 日期：2026-10-22
-状态：**待确认**（本文只定义设计，不实施）
+状态：**已实施**（核心；floatinspace 明确不显示，待实机验收）
 基线：v4 核心已实现（`bcc4483` 之后）
 参考：
 - [Patrick's Parabox 官方自定义关卡文档](https://www.patricksparabox.com/custom-levels/)
@@ -16,7 +16,7 @@
 - 方块是否为主出口块（exit block）/ clone / 无限进入 / 无限退出；
 - Counting 墙的 `numSolved / numRequired`；
 - `specialeffect` 的数值和语义；
-- 浮空（float in space）的显示；
+- 浮空（float in space）的运行时限制说明（明确不显示）；
 - 关卡级的 Priority / Inner Push / Shed；
 - SpecialEffect 8 在方块上按游戏原逻辑显示 Order / Shed / InnerPush 图标。
 
@@ -329,7 +329,8 @@ internal static class SpecialEffectCatalog
 - 中英文、缩放、详情行截断正常；
 - `dotnet build -c Release` 0/0。
 
-## 7. 待确认
+## 7. 已确认
 
-1. 只做详情 + 机制栏，还是也要 SE8 地图图标？
-2. `exitblock` 是否需要单独显示，还是归入 Clone/Primary 即可？
+1. 地图必须显示 SE8 的 Order / Shed / InnerPush 图标。
+2. floatinspace 不显示，不做启发式猜测。
+3. 实施方式为 Native（当前会话直接实现）。

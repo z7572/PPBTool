@@ -43,9 +43,12 @@ LevelThumbnails = true     ; 关卡缩略图（默认开）
 [Diagnostics]
 LogSceneTree = false
 LogInfSymbols = false       ; 记录无限符号判定（排查 hub 显示差异）
+LogBlockTraits = false      ; 悬停方块属性日志（每个方块每次打开一次）
 
 [UI]
 Language = auto             ; auto / zh / en
+ShowBlockTraits = true      ; 右侧详情显示方块属性
+ShowTraitIcons = true       ; SE8 方块上的 Order/Shed/InnerPush 图标
 ```
 
 - 地图快捷键使用 BepInEx `KeyboardShortcut`：`F7`、`Ctrl+F7` 等；在配置界面清空快捷键即可禁用。
@@ -82,7 +85,14 @@ Language = auto             ; auto / zh / en
   - 大厅里按游戏 `DrawPortalLines` 绘制传送门之间的解锁连接线；
   - 困难传送门 Hard 1 红、Hard 2 蓝，使用 `Particle.hardPortalColor`/`visualPortalColor` 的 HSV；
   - 箱子不再显示 `F/C/I/O...` 徽标；属性在右侧详情行显示：
-    `(3,6) 打开层级: Area Transfer · 箱子落点 (5,5) · 克隆 · 翻转`。
+    `(3,6) 打开层级: Area Transfer · 主出口 · 克隆 · SE8 (机制图标)`。
+- 特殊属性
+  - 详情行显示：玩家、可占据、主出口/克隆、无限进入/退出、Counting、SpecialEffect；
+  - 关卡有非默认 Priority / Inner Push / Shed 时，地图顶部显示机制条；
+  - `SpecialEffect == 8` 的箱子按游戏原逻辑显示 Order / Shed / InnerPush 图标；
+  - `Priority / Inner Push / Shed` 是关卡级机制，不会重复写进每个方块的属性；
+  - `floatinspace` 不显示：加载后会进入隐藏 void，运行时无法可靠恢复该标记；
+  - `Locked / Weight / Shield / Rooted` 不是原版可玩关卡属性，不显示。
 - 操作
   - 方向键 / `WASD`：移动光标
   - `Enter` / `Space` / 左键：打开箱子或传送
@@ -98,7 +108,7 @@ Language = auto             ; auto / zh / en
 - 工具栏直接提供 `←` / `→` 视图后退/前进（没有二级菜单）；`回到引用处` 仍是独立按钮。后退/前进只改变地图视图，不写游戏 Undo。
 - 多引用层级：`回到引用处` 有多个候选时打开引用选择器；无外层引用时禁用并提示。引用选择器是模态的，鼠标不会穿透到地图传送。
 - 同格重叠的箱子：只点击网格里的箱子；被覆盖的引用在引用选择器里标 `hidden overlap`。
-- 悬停在箱子上时，右侧地图详情行会追加该箱子的属性（克隆、翻转、无限进入/退出、可附身等）。
+- 悬停在方块上时，右侧地图详情行会追加该方块的真实属性（主出口/克隆、无限进入/退出、Counting、SE、玩家/可占据等）。
 - 缩放/平移时边缘方块会按可见部分裁剪显示，不再整块消失。
 
 ### 无限进入 / 无限退出
