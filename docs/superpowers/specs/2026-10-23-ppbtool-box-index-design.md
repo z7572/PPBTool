@@ -212,7 +212,7 @@ Infinite Exit #1 of Intro
 所以对任意有 `SubLevel` 的箱子：
 
 1. 扫描 `block.IsSomeInfEnterBlock && block.SubLevel == 当前.SubLevel`；
-2. 再扫描 `当前.SubLevel.infExitBlocks`；
+2. 再扫描 `block.IsSomeInfExitBlock && block.OuterLevel == 当前.SubLevel`（位于这个箱子内部的出口块）；
 3. 用 `level.infEnterBlocks` / `infExitBlocks` 反查 owner/degree；
 4. 按 owner+degree 去重；
 5. 显示：
@@ -223,7 +223,7 @@ Infinite Exit #1 of Intro
 
 这适用于主箱子、clone、∞ 进入箱和 ∞ 退出箱。
 
-不能只看方块自身是不是 ∞ 退出块：普通箱子所属 Level 也可能有 ∞ 退出引用，例如 Reception 2 `(9,2)` 的 Transfer、`(9,3)` 的 Flip+、`(9,6)` 的 Redo。
+不能只看方块自身是不是 ∞ 退出块：普通箱子所属 Level 内部也可能有别的层留下的 ∞ 退出块，例如 Reception 2 `(9,2)` 的 Transfer 内部有 Eat 的 `Infinite Exit #0`。
 
 ## 7. 与现有 infinity owner 的关系
 
