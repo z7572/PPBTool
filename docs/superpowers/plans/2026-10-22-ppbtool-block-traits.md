@@ -22,6 +22,15 @@
 - `dotnet build -c Release` must finish with 0 warnings / 0 errors at every task boundary.
 - Existing files are large; add focused files rather than expanding `TeleportOverlay` unnecessarily.
 
+## Reference Fixtures
+
+- User-provided hub: `custom_levels/自定义大厅/Reborn's Hub v3/(Reborn's Hub v3) HUB/hub.txt` (36 floatinspace refs, mostly SE0/SE11).
+- `.../Levels/3rd collection/Extrude/Ext0.txt`: `shed 1` + SE8 block.
+- `.../Levels/3rd collection/Inner Push/Push_2.txt`: `inner_push 1` + SE8 block.
+- `.../Levels/1st collection/5 - Empty/Ep_5.txt`: `attempt_order push,enter,eat` (partial list).
+
+These are manual game fixtures; do not copy them into the repository.
+
 ## Review Focus
 
 - **Global mechanics shown as block traits** — a level with `shed` or `inner_push` must not make every box say it has that property; only a SE8 block gets glyphs.
@@ -272,6 +281,7 @@ Load the fixture:
 - Expected bar: `Priority: enter → eat → push → possess    Inner Push    Shed`.
 - Hover a normal box: its detail must not repeat Priority/Inner Push/Shed.
 - Hover the SE8 box: detail still only says SE8; icons are Task 5.
+- Also load `Ep_5.txt` with `attempt_order push,enter,eat`; the bar must show exactly those three actions, not a fabricated `possess`.
 
 - [ ] **Step 4: Build and commit**
 
@@ -333,6 +343,8 @@ Load the fixture:
 - SE8 + only shed: one Shed icon;
 - non-SE8 box: no glyph;
 - default level: no bar and no glyph.
+- Ext0 (`shed` + SE8): one Shed glyph.
+- Push_2 (`inner_push` + SE8): one InnerPush glyph.
 
 - [ ] **Step 4: Build and commit**
 
@@ -362,6 +374,8 @@ Create a level with a normal root block and a float-in-space reference block, fo
 BlockTraits ... outer=null|... outerStart=null|... sub=...
 ```
 for both; record whether a stable distinction exists.
+
+Also open the provided `Reborn's Hub v3` hub (36 floatinspace refs) and hover several hub refs; compare their `OuterLevel` / `OuterLevelStart` / `SubLevel` with a known non-float root block.
 
 - [ ] **Step 2: Add the conservative label**
 

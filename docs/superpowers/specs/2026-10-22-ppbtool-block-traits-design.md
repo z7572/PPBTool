@@ -101,8 +101,35 @@ if (block.SpecialEffect == 8)
 
 `PlayerOrder`、`Possessable`、`FlipH`、`SpecialEffect` 则确实由官方格式加载，保留。
 
-### 2.5 SpecialEffect 表
+### 2.5 参考案例：Reborn's Hub v3
 
+用户提供的 CustomHubs 自定义大厅：
+
+```text
+custom_levels/自定义大厅/Reborn's Hub v3/(Reborn's Hub v3) HUB/hub.txt
+```
+
+静态扫描结果：
+
+- 约 180 个 `Ref`；
+- 约 36 个 `floatinspace = 1`；
+- 约 41 个 `exitblock = 1`；
+- hub 自身的 `Ref` 只出现 `specialeffect 0` 和 `specialeffect 11`；
+- `hub.txt` 头部没有 `attempt_order` / `shed` / `inner_push`；
+- 它的子关卡里有：
+  - `Ext0.txt`：`shed 1` + `Block ... specialeffect 8`；
+  - `Push_2.txt`：`inner_push 1` + `Block ... specialeffect 8`；
+  - `Ep_5.txt`：`attempt_order push,enter,eat`（**可以少于四项**）。
+
+这组数据说明：
+
+- `floatinspace` 在真实 hub 中大量存在，必须用这个 hub 做诊断，而不是只看一个手工样例；
+- `attempt_order` 不是永远四项，机制栏必须按实际列表显示，不能补全默认值；
+- `shed` / `inner_push` 可以在没有 `attempt_order` 的关卡出现；
+- `specialeffect 11` 很常见（TUI/网格隐藏），地图仍应正常显示，只在详情里标注；
+- `specialeffect 8` 确实由作者手动标在某个方块上，进一步确认它不是自动属性。
+
+### 2.6 SpecialEffect 表
 来自 Parabox-Editor `place/utils.py`：
 
 | ID | 名称 | 说明 |
