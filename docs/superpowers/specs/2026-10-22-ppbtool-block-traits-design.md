@@ -140,6 +140,28 @@ custom_levels/自定义大厅/Reborn's Hub v3/(Reborn's Hub v3) HUB/hub.txt
 - `specialeffect 11` 很常见（TUI/网格隐藏），地图仍应正常显示，只在详情里标注；
 - `specialeffect 8` 确实由作者手动标在某个方块上，进一步确认它不是自动属性。
 
+#### 2.5.1 `hidden overlap` 不等于 floatinspace
+
+`hub.txt` 的 `Forgotten_levels... (7,1)` 有两个同格引用：
+
+```text
+Ref 7 1 3 0 1 0 0 0 0 0 0 0 1 0 0 Forgotten_levels...
+Ref 7 1 3 0 0 0 0 0 0 0 0 0 1 0 0 Forgotten_levels...
+```
+
+字段分别是：
+
+- 两条都 `floatinspace = 0`；
+- 第一条 `infexit = 1`（无限退出引用）；
+- 第二条普通引用；
+- 两条都 `exitblock = 0`，不是主出口块。
+
+所以 `Forgotten levels... (7,1) · Infinite Exit · hidden overlap` 是：
+
+> 同一个 `(7,1)` 上，一个普通引用和一个无限退出引用重叠；其中一个占据网格，另一个留在引用列表里，因此显示为 hidden overlap。
+
+它不是 floatinspace，也不能用“在 void 里”或“同一格有隐藏引用”来推断 floatinspace。
+
 ### 2.6 SpecialEffect 表
 来自 Parabox-Editor `place/utils.py`：
 

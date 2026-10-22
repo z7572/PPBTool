@@ -28,6 +28,7 @@
 - `.../Levels/3rd collection/Extrude/Ext0.txt`: `shed 1` + SE8 block.
 - `.../Levels/3rd collection/Inner Push/Push_2.txt`: `inner_push 1` + SE8 block.
 - `.../Levels/1st collection/5 - Empty/Ep_5.txt`: `attempt_order push,enter,eat` (partial list).
+- `hub.txt` `Forgotten_levels... (7,1)`: normal ref + infinite-exit ref at the same cell, both `floatinspace=0`; this is a hidden overlap, not floatinspace.
 
 These are manual game fixtures; do not copy them into the repository.
 
