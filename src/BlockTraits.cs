@@ -52,22 +52,19 @@ namespace PPBTool
             {
                 foreach (Block other in World.blocks)
                 {
-                    if (other != null
-                        && other.IsSomeInfEnterBlock
-                        && other.SubLevel == block.SubLevel)
+                    if (other == null)
+                    {
+                        continue;
+                    }
+
+                    if (other.IsSomeInfEnterBlock && other.SubLevel == block.SubLevel)
                     {
                         AddInfLink(traits, other, true);
                     }
-                }
 
-                if (block.SubLevel.infExitBlocks != null)
-                {
-                    foreach (Block exit in block.SubLevel.infExitBlocks)
+                    if (other.IsSomeInfExitBlock && other.OuterLevel == block.SubLevel)
                     {
-                        if (exit != null)
-                        {
-                            AddInfLink(traits, exit, false);
-                        }
+                        AddInfLink(traits, other, false);
                     }
                 }
             }
