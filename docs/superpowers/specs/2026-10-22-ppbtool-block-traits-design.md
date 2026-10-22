@@ -342,3 +342,5 @@ internal static class SpecialEffectCatalog
 8. 无限进入/退出的 owner/degree 从游戏的 `Level.infEnterBlocks` / `Level.infExitBlocks` 扫描得到，不能只用 `block.SubLevel` / `block.OuterLevel` 推断；显示 `Infinite Exit #1 of Intro`。
 9. 左侧层级节点：无限退出标签挂到 `block.OuterLevel` 节点（Multi Infinite），显示 `Multi Infinite [refs ×N · Infinite Exit #1 of Intro]`；无限进入标签挂到目标层节点，按 owner/degree 去重后显示。
 10. 无限标签固定英文；删除 `Infinite Enter ×N` / `Infinite Exit ×N` 聚合计数，避免与具体 owner/degree 重复。
+11. 所有有 `SubLevel` 的方块（主箱子、clone、∞ 进入、∞ 退出）在详情里都显示进入该 `SubLevel` 的 `Infinite Enter` 路径；按 owner+degree 去重。
+12. 只有方块自身是 ∞ 退出块时，才追加它自己的 `Infinite Exit`；不能把父层的 ∞ 退出套到同层所有箱子上。

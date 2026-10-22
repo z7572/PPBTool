@@ -366,4 +366,42 @@ Multi Infinite  [refs ×2 · Infinite Exit #1 of Intro]
 - 光标在**进入块**上 → `Infinite Enter #0 of X`；
 - 标签固定英文。
 
+## 14. 所有箱子的无限入口
+
+当前只在 `IsSomeInfEnterBlock` / `IsSomeInfExitBlock` 的方块上显示无限信息，不够。
+
+“原始箱子”不是一个单独对象：
+
+- 每个有 `SubLevel` 的方块都是该层的引用；
+- 主出口块 = `SubLevel.GetExitBlock()`；
+- 其他引用是 clone / 无限进入 / 无限退出；
+- 它们共享同一个 `SubLevel`。
+
+因此，对**任意有 SubLevel 的方块**，都可以显示“进入这个箱子内部”的无限入口：
+
+- 扫描所有 `block.IsSomeInfEnterBlock && block.SubLevel == 当前方块.SubLevel`；
+- owner/degree 通过 `level.infEnterBlocks` 反查；
+- 按 `owner + degree` 去重；
+- 显示：
+  ```text
+  Infinite Enter #0 of Intro
+  ```
+- 主箱子、clone、无限进入箱、无限退出箱都适用。
+
+如果方块本身是无限退出块，再追加它自身的：
+
+```text
+Infinite Exit #1 of Intro
+```
+
+不能把**父层的无限退出**硬套到同层所有箱子上；只有真正的出口块才有这一条。
+
+无法解析 owner 时只显示：
+
+```text
+Infinite Enter #0
+```
+
+不要显示 `of ???`，除非 owner 真的是 `???`。
+
 若当前光标落在**同格重叠的普通引用**上，应提示该格还有隐藏引用，而不是伪造无限标签。引用选择器里也应显示 owner/degree。

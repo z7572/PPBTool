@@ -510,6 +510,20 @@ These fixes come from the [inspection log](../../specs/2026-10-22-ppbtool-block-
 - [ ] Verify `Intro`'s second infinite exit is visible on the `Multi Infinite` node as `Infinite Exit #1 of Intro`.
 - [ ] Build and commit.
 
+### 8.8 Infinite access on every box
+
+**Files:** Modify `src/BlockTraits.cs`, `src/LevelGraph.cs`
+
+- [ ] For any block with `SubLevel != null`, collect all enter blocks whose `SubLevel == block.SubLevel`.
+- [ ] Resolve owner/degree from `level.infEnterBlocks`, deduplicate by `owner + degree`, and append:
+  ```text
+  Infinite Enter #0 of Intro
+  ```
+- [ ] This applies to primary, clone, infinite-enter, and infinite-exit boxes.
+- [ ] If the block itself is `IsSomeInfExitBlock`, append its own exit label; do not inherit the parent level's exit label.
+- [ ] If owner resolution fails, omit `of ...`; never fabricate `of ???`.
+- [ ] Build and commit.
+
 ### Task 7: Documentation and final acceptance
 
 **Files:**
