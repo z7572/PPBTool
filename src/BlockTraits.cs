@@ -19,6 +19,8 @@ namespace PPBTool
         public int SpecialEffect;
         public int Solved;
         public int Required;
+        public int InfDegree;
+        public string InfOwnerTitle;
 
         public static BlockTraits From(Block block)
         {
@@ -36,6 +38,7 @@ namespace PPBTool
                 SpecialEffect = block != null ? block.SpecialEffect : 0,
                 Solved = block != null ? block.numSolved : 0,
                 Required = block != null ? block.numRequired : 0,
+                InfDegree = -1,
             };
 
             if (block != null && block.SubLevel != null)
@@ -44,6 +47,20 @@ namespace PPBTool
                 Block primary = refs != null && refs.Count > 0 ? refs[0] : null;
                 traits.IsExitBlock = primary == block;
                 traits.IsClone = primary != null && primary != block;
+            }
+
+            if (block != null && block.SubLevel != null
+                && (block.IsSomeInfEnterBlock || block.IsSomeInfExitBlock))
+            {
+                traits.InfOwnerTitle = LevelGraph.DescribeLevel(block.SubLevel);
+                if (block.IsSomeInfEnterBlock)
+                {
+                    traits.InfDegree = block.SomeInfEnterNum;
+                }
+                else if (block.SubLevel.infExitBlocks != null)
+                {
+                    traits.InfDegree = block.SubLevel.infExitBlocks.IndexOf(block);
+                }
             }
 
             return traits;
@@ -77,12 +94,12 @@ namespace PPBTool
 
             if (IsInfEnter)
             {
-                parts.Add(UiText.Get("inf_enter"));
+                parts.Add(InfLabel("inf_enter_of"));
             }
 
             if (IsInfExit)
             {
-                parts.Add(UiText.Get("inf_exit"));
+                parts.Add(InfLabel("inf_exit_of"));
             }
 
             if (IsFlip)
@@ -106,6 +123,22 @@ namespace PPBTool
             }
 
             return string.Join(" · ", parts.ToArray());
+        }
+
+        private string InfLabel(string key)
+        {
+            string label = UiText.Get(key);
+            if (InfDegree >= 0)
+            {
+                label += " #" + InfDegree;
+            }
+
+            if (!string.IsNullOrEmpty(InfOwnerTitle))
+            {
+                label += " · " + InfOwnerTitle;
+            }
+
+            return label;
         }
     }
 

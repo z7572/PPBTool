@@ -2020,6 +2020,8 @@ namespace PPBTool
                 }
             }
 
+            DrawLevelBoxGlyphs(level, localX, localY, cell);
+
             var gridRect = new Rect(localX - 1f, localY - 1f, gridW + 2f, gridH + 2f);
             if (Overlaps(gridRect, localCanvas))
             {
@@ -2146,45 +2148,79 @@ namespace PPBTool
             Fill(new Rect(x + w - thickX, y + thickY, thickX, Mathf.Max(0f, h - thickY * 2f)), color);
         }
 
-        private void DrawBoxGlyphs(Rect r, Block block, int cell)
+        private void DrawBoxGlyphs(Rect r, Block block, int cell, Level sub)
         {
             if (!config.ShowTraitIcons
                 || block == null
                 || block.SpecialEffect != 8
-                || block.SubLevel == null)
+                || sub == null
+                || sub.width <= 0
+                || sub.height <= 0)
             {
                 return;
             }
 
+            float cw = r.width / sub.width;
+            float ch = r.height / sub.height;
+            DrawTraitGlyphs(
+                block,
+                r.x + cw * 0.5f,
+                r.y + ch * 0.5f,
+                Mathf.Min(cw, ch),
+                ch);
+        }
+
+        private void DrawLevelBoxGlyphs(Level level, float originX, float originY, int cell)
+        {
+            if (!config.ShowTraitIcons || selectedNode == null)
+            {
+                return;
+            }
+
+            Block parent = selectedNode.ParentBlock;
+            if (parent == null || parent.SpecialEffect != 8 || parent.SubLevel != level)
+            {
+                return;
+            }
+
+            DrawTraitGlyphs(
+                parent,
+                originX + cell * 0.5f,
+                originY + cell * 0.5f,
+                cell,
+                cell);
+        }
+
+        private void DrawTraitGlyphs(Block block, float centerX, float centerY, float size, float step)
+        {
             int index = 0;
             if (World.showAttemptOrder)
             {
-                DrawTraitGlyph(r, texOrder, cell, index++);
+                DrawTraitGlyph(texOrder, centerX, centerY, size, step, index++);
             }
 
             if (World.shedEnabled)
             {
-                DrawTraitGlyph(r, texShed, cell, index++);
+                DrawTraitGlyph(texShed, centerX, centerY, size, step, index++);
             }
 
             if (World.innerPushEnabled)
             {
-                DrawTraitGlyph(r, texInnerPush, cell, index);
+                DrawTraitGlyph(texInnerPush, centerX, centerY, size, step, index);
             }
         }
 
-        private void DrawTraitGlyph(Rect r, Texture texture, int cell, int index)
+        private void DrawTraitGlyph(
+            Texture texture, float centerX, float centerY, float size, float step, int index)
         {
             if (texture == null)
             {
                 return;
             }
 
-            float size = cell * 0.75f;
-            float x = r.x + cell * 0.05f;
-            float y = r.y + cell * 0.05f + index * cell;
+            float y = centerY + index * step;
             DrawTextureTinted(
-                new Rect(x, y, size, size),
+                new Rect(centerX - size * 0.5f, y - size * 0.5f, size, size),
                 texture,
                 new Color(0f, 0f, 0f, 0.35f));
         }
@@ -2363,7 +2399,8 @@ namespace PPBTool
                     : (owner ?? block);
             }
 
-            Color color = block.IsPlayer && !possessedWall
+            bool hasOwnColor = block.val > 0.0001f || block.sat > 0.0001f;
+            Color color = block.IsPlayer && !possessedWall && hasOwnColor
                 ? GamePlayerColor(block, cell)
                 : GameWallColor(colorSource, cell);
             bool flip = block.FlipH;
@@ -2383,6 +2420,7 @@ namespace PPBTool
                     DrawWallQuad(big, quad.BR, new Rect(r.x + hw, r.y + hh, hw, hh), color);
                     DrawWallCounter(r, block, cell);
                     DrawFlipShineArt(r, block, cell);
+                    DrawWallFlashingBorder(r, block);
                     if (block.Possessable || block.IsPlayer)
                     {
                         DrawFaceArt(r, block, cell);
@@ -2410,12 +2448,49 @@ namespace PPBTool
 
             DrawWallCounter(r, block, cell);
             DrawFlipShineArt(r, block, cell);
+            DrawWallFlashingBorder(r, block);
 
             // Game: DrawWall(...); if (block.Possessable || block.IsPlayer) DrawFace(...).
             if (block.Possessable || block.IsPlayer || block.DrawIsPlayer)
             {
                 DrawFaceArt(r, block, cell);
             }
+        }
+
+        private static bool IsFlashingExitBlock(Block block, Level sub)
+        {
+            if (block == null)
+            {
+                return false;
+            }
+
+            if (block.IsSomeInfExitBlock)
+            {
+                return true;
+            }
+
+            return sub != null
+                && block.OuterLevel != null
+                && block.OuterLevel.InfZone
+                && !sub.FilledWithWalls
+                && block.SpecialEffect != 12;
+        }
+
+        private void DrawWallFlashingBorder(Rect r, Block block)
+        {
+            if (!IsFlashingExitBlock(block, null) || block.Locked)
+            {
+                return;
+            }
+
+            float t = QuadOscillate(Time.unscaledTime * 0.3f);
+            Color color = Hsv(0.15f, 1f, Mathf.Lerp(0.65f, 1f, t));
+            color.a = 0.9f;
+            float thickness = GameBorderThickness(r.width, r.height);
+            Fill(new Rect(r.x, r.y, r.width, thickness), color);
+            Fill(new Rect(r.x, r.yMax - thickness, r.width, thickness), color);
+            Fill(new Rect(r.x, r.y, thickness, r.height), color);
+            Fill(new Rect(r.xMax - thickness, r.y, thickness, r.height), color);
         }
 
         private void DrawWallCounter(Rect r, Block block, int cell)
@@ -2518,22 +2593,15 @@ namespace PPBTool
                 DrawBoxGrid(r, block, sub);
             }
 
-            DrawBoxGlyphs(r, block, cell);
+            DrawBoxGlyphs(r, block, cell, sub);
             DrawBoxBorder(r, block, sub, cell);
             DrawFlipShineArt(r, block, cell);
-            if (sub != null && GameState.Player != null
-                && GameState.Player.OuterLevel == sub
-                && GameState.Player.SubLevel == null)
-            {
-                DrawFaceArt(r, GameState.Player, cell);
-            }
-
-            if (block.Possessable && !block.IsPlayer)
+            if (sub != null && block.IsPlayer)
             {
                 DrawFaceArt(r, block, cell);
             }
 
-            if (block.IsPlayer)
+            if (block.Possessable && !block.IsPlayer)
             {
                 DrawFaceArt(r, block, cell);
             }
@@ -2783,12 +2851,7 @@ namespace PPBTool
             }
 
             border.a = 0.12f;
-            bool flashingExit = sub != null
-                && (block.IsSomeInfExitBlock
-                    || (block.OuterLevel != null
-                        && block.OuterLevel.InfZone
-                        && !sub.FilledWithWalls
-                        && block.SpecialEffect != 12));
+            bool flashingExit = IsFlashingExitBlock(block, sub);
             if (flashingExit)
             {
                 float t = QuadOscillate(Time.unscaledTime * 0.3f);
@@ -2941,7 +3004,23 @@ namespace PPBTool
             }
             else if (block.PlayerOrder == 2)
             {
-                mouth = null;
+                float barW = r.width * 0.2666f;
+                float barH = r.height * 0.05f;
+                float barX = 1.5f * block.eyeXOffset;
+                float barY = 0.17f + 1.5f * block.eyeYOffset;
+                if (block.FlipH)
+                {
+                    barX *= -1f;
+                }
+
+                Fill(
+                    new Rect(
+                        r.center.x + r.width * barX - barW * 0.5f,
+                        r.center.y + r.height * barY - barH * 0.5f,
+                        barW,
+                        barH),
+                    ink);
+                return;
             }
             else if (block.PlayerOrder == 3)
             {
@@ -3520,8 +3599,15 @@ namespace PPBTool
                 + " clone=" + traits.IsClone
                 + " player=" + traits.IsPlayer
                 + " possessable=" + traits.IsPossessable
+                + " playerStart=" + block.IsPlayerStart
+                + " hsv=" + block.hue + "/" + block.sat + "/" + block.val
+                + " startHsv=" + block.startHue + "/" + block.startSat + "/" + block.startVal
+                + " wallTile=" + block.WallTileIndex + "/" + block.WallTileIndexFlipH
+                + " sub=" + (block.SubLevel == null ? "null" : LevelGraph.DescribeLevel(block.SubLevel))
                 + " counting=" + traits.Solved + "/" + traits.Required
                 + " se=" + traits.SpecialEffect + "(" + SpecialEffectCatalog.Name(traits.SpecialEffect) + ")"
+                + " infDegree=" + traits.InfDegree
+                + " infOwner=" + (traits.InfOwnerTitle ?? "null")
                 + " outer=" + (block.OuterLevel == null ? "null" : block.OuterLevel.hubAreaName)
                 + " outerStart=" + (block.OuterLevelStart == null ? "null" : block.OuterLevelStart.hubAreaName));
         }
