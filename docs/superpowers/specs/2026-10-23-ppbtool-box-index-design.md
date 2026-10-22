@@ -36,54 +36,105 @@
 - 每个有 `SubLevel` 的方块都是该层的一个引用；
 - `SubLevel.GetExitBlock()` 是主引用/主箱子；
 - clone、无限进入、无限退出都是同一 `SubLevel` 的其他引用；
-- 所以索引应标识**具体引用**，不是标识 Level。
+- 游戏 `levelChar` 的索引单位是 **Level**，不是每个引用；
+- 因此 primary / clone 会共享同一个 `[n]`，与游戏 ASCII mode 一致。
 
 ## 3. 索引定义
 
-不再使用“引用列表序号”直接作为最终编号，也不再新增固定索引列。
+已查阅 `Draw.cs` 的游戏实现。游戏并不是按“父层箱子顺序”编号，而是：
 
-目标：模仿游戏 ASCII mode 中每个箱子左侧的标号，但把 A~Z 改成连续数字：
+```csharp
+private static string levelChar(Level level)
+{
+    if (level.InfZone)
+        return "i";
 
-```text
-[1] Intro
-[2] Room 7x7
-[10] Next Box
+    int num = tuiLevels.IndexOf(level);
+    if (num == -1)
+        return "b";
+
+    if (num < indexCharacters.Length)
+        return indexCharacters[num].ToString();
+
+    return indexCharacterOverflow;
+}
 ```
 
-规则：
+其中：
+
+```csharp
+private static string indexCharacters =
+    "123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+private static string indexCharacterOverflow = "z";
+```
+
+`tuiLevels = ComputeTUILevels()`，过滤条件：
+
+- `!level.FilledWithWalls`；
+- `!World.LevelIsInfZone(level)`，或满足已进入 void 且 `blockList.Count > 1`；
+- `level.GetExitBlock() == null || SpecialEffect != 11`；
+- hub 可见性条件。
+
+非 hub 时：
+
+```csharp
+tuiLevels.Sort((a, b) => b.width.CompareTo(a.width));
+```
+
+所以：
+
+- 游戏编号是 **Level 在 tuiLevels 中的序号**，不是每个 box 引用各自编号；
+- primary 和 clone 共享同一个 Level，因此共享同一个字母/数字；
+- 虚空固定返回 `"i"`；
+- SpecialEffect 11 被排除，`levelChar` 返回 `"b"`；
+- 超过 35 个可见层统一返回 `"z"`。
+
+### 本 mod 的转换
+
+按你的要求，保留游戏序号，但把字母换成连续数字：
+
+```text
+游戏 A/B/C → 1/2/3
+游戏 9/A → 9/10
+```
+
+即：
+
+```csharp
+index = tuiLevels.IndexOf(level);
+label = "[" + (index + 1) + "]";
+```
 
 - 1-based；
-- 每个箱子在其**父层**内编号；
-- 顺序采用父层 `blockList` 中箱子的创建/文件顺序；
-- 只对真正可见的箱子编号；
-- 不显示 A~Z，超过 9 后直接 `10`、`11`；
-- gray small bracket，和右侧 `[refs ×1]` 同一风格。
+- `[1]`、`[2]`、`[10]`；
+- 不使用 A~Z；
+- 不新增索引列，直接放在标题左边。
 
 ### SpecialEffect 11
 
-`SpecialEffect == 11` 的箱子在 ASCII mode 中不显示。
+游戏将它从 `tuiLevels` 排除，因此它没有字母位置；`levelChar` 会返回 `"b"`。
 
-建议：
+本 mod 仍要求显示 `[n]`：
 
-- 不给它分配数字编号；
-- 树里可显示 `[hidden]` 或直接无编号；
-- 不伪造 `[?]`。
+- 构造一个完整索引列表，把 SE11 的 Level 也加入；
+- 顺序沿用 `World.levels` / 同样的宽度排序；
+- 隐藏箱子也占用一个数字；
+- 文档注明：存在 SE11 时，可见编号可能与游戏 ASCII 字母不完全一致，这是本 mod 的扩展。
 
 ### 虚空
 
-虚空不是普通关卡内的箱子，没有 ASCII 标号。
+游戏 `levelChar` 对 `InfZone` 返回 `"i"`，所有虚空都是 `i`。
 
-建议单独编号：
+按你的要求改成独立编号：
 
 ```text
 [v1] Void 7x7
 [v2] Void 7x7
 ```
 
-- 虚空使用独立的 `v` 序列，不占用普通箱子数字；
-- 如果不想显示虚空编号，则显示 `[void]`，但不要显示 `[0]` 或 `[?]`。
-
-该点需要确认。
+- 独立 `v` 序列；
+- 不占用普通数字；
+- 1-based。
 
 ## 4. 左侧层级树 UI
 
@@ -200,7 +251,6 @@ Infinite Exit #1 of Intro
 
 ## 9. 待确认
 
-1. 父层 `blockList` 顺序是否与游戏 ASCII mode 的箱子标号顺序一致？如果 ASCII mode 按网格阅读顺序编号，需要改为 `y/x` 扫描。
-2. 虚空使用独立 `[v1]` / `[v2]`，还是不显示编号只显示 `[void]`？
-3. `SpecialEffect == 11` 的隐藏箱子，显示 `[hidden]` 还是完全不显示索引？
-4. 索引 1-based `[1]`、`[2]` 是否符合预期？
+1. SpecialEffect 11 加入完整索引列表后，可见编号可能和游戏 ASCII 字母不同；是否接受？
+2. 虚空使用独立 `[v1]` / `[v2]` 是否符合预期？
+3. 索引 1-based `[1]`、`[2]` 是否符合预期？

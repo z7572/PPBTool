@@ -4,7 +4,7 @@
 
 **Goal:** Show a gray `[n]` box index before every tree title and use the same index/area label in Infinite Enter/Exit text.
 
-**Architecture:** Add a 1-based box index from the parent level's `blockList` order, plus a separate `[vN]` sequence for void nodes. Add a read-only `InfLink` list to `BlockTraits`, resolved through `Level.infEnterBlocks` / `infExitBlocks`. One `LevelGraph` helper combines index and optional `hubAreaName`. The tree draws `[n]` inline with the existing gray tag style. No game state changes.
+**Architecture:** Reimplement the game's `ComputeTUILevels` order and assign 1-based numbers to `Level`s; add a separate `[vN]` sequence for void levels. Add a read-only `InfLink` list to `BlockTraits`, resolved through `Level.infEnterBlocks` / `infExitBlocks`. One `LevelGraph` helper combines index and optional `hubAreaName`. The tree draws `[n]` inline with the existing gray tag style. No game state changes.
 
 **Tech Stack:** C# / BepInEx 5 / HarmonyX / Unity 2020.3 / IMGUI / .NET Framework 4.6.
 
@@ -23,10 +23,10 @@
 
 ## Review Focus
 
-- `blockList` order may not match ASCII mode's grid order; the code must record which order it uses.
-- A level with multiple references must assign one index per box reference, not one per Level.
-- Void nodes must not consume normal box numbers or show `[0]`.
-- SpecialEffect 11 hidden boxes must not get a visible number that the game does not show.
+- `tuiLevels` is per `Level`, not per reference; primary and clone share one index, matching `Draw.levelChar`.
+- A level omitted by `ComputeTUILevels` (SpecialEffect 11) must still receive `[n]` via the full index list.
+- Void levels must not consume normal numbers; they use `[vN]`.
+- Non-hub `ComputeTUILevels` sorts by width descending; hub keeps world order.
 - Inline `[n]` must not break indentation, arrow hit area, tags, selection, or horizontal scroll.
 
 ## File Structure
@@ -41,7 +41,7 @@
 ### Task 1: Add box and void indexes
 
 **Files:**
-- Modify: `src/LevelGraph.cs` (`LevelNode`, `BuildNode`, new per-level index maps)
+- Modify: `src/LevelGraph.cs` (`LevelNode`, graph build, index computation)
 
 **Interfaces:**
 - Produces:
@@ -51,42 +51,63 @@
   public string LevelNode.IndexLabel; // "[1]" / "[v1]" / ""
   ```
 
-- [ ] **Step 1: Build per-level indexes**
+- [ ] **Step 1: Reimplement the TUI level order**
 
-For each level, enumerate `level.blockList` in order and assign a 1-based index to each block with `SubLevel != null`:
+Port `Draw.ComputeTUILevels`:
 
 ```csharp
-int n = 0;
-foreach (Block b in level.blockList)
+foreach (Level level in World.levels)
 {
-    if (b != null && b.SubLevel != null && b.SpecialEffect != 11)
-        boxIndexByBlock[b] = ++n;
+    if (!level.FilledWithWalls
+        && (!World.LevelIsInfZone(level)
+            || (World.WentToInfZone && level.blockList.Count > 1))
+        && (level.GetExitBlock() == null
+            || level.GetExitBlock().SpecialEffect != 11)
+        && hubVisibility(level))
+    {
+        list.Add(level);
+    }
 }
+
+if (!World.InHub())
+    list.Sort((a, b) => b.width.CompareTo(a.width));
 ```
 
-- [ ] **Step 2: Assign indexes to nodes**
+`hubVisibility` must copy the game condition exactly.
 
-For a node with `ParentBlock`:
-- normal box: `BoxIndex = boxIndexByBlock[ParentBlock]`;
-- void node (`ParentBlock == null` or `level.InfZone`): use a separate global `VoidIndex` sequence in graph build order;
-- SpecialEffect 11: `BoxIndex = -1`, no normal number.
+- [ ] **Step 2: Add the full list for SE11**
 
-- [ ] **Step 3: Add `IndexLabel`**
+Build `fullIndexLevels` by inserting SpecialEffect 11 levels into the same order (world order; non-hub width sort), because the game excludes them and would return `"b"`.
+
+Assign:
+
+```csharp
+BoxIndex = fullIndexLevels.IndexOf(level) + 1;
+```
+
+Do not use `blockList`, `BlocksWithThisAsTheirSubLevel`, or `DebugID`.
+
+- [ ] **Step 3: Void sequence**
+
+For `level.InfZone`, assign `VoidIndex` from a separate 1-based sequence. `BoxIndex = -1`.
+
+- [ ] **Step 4: Add `IndexLabel`**
 
 ```text
 [1]
+[10]
 [v1]
 ""
 ```
 
-Never `[0]`, `#-1`, or `[?]`.
+Never `[0]`, `[A]`, `[b]`, `[z]`, or `[?]`.
 
-- [ ] **Step 4: Build**
+- [ ] **Step 5: Build**
 
 Run: `dotnet build -c Release`
 Expected: 0 warnings / 0 errors.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/LevelGraph.cs
@@ -282,9 +303,9 @@ git commit -m "Use indexed infinity labels in tree and details"
 
 - [ ] Every visible non-root box has a `[n]` or `[vN]`.
 - [ ] `[9]` is followed by `[10]`, not `[A]`.
-- [ ] Primary and clone boxes have distinct indexes.
-- [ ] Void nodes do not consume normal box numbers.
-- [ ] SpecialEffect 11 does not show a number the game hides.
+- [ ] Primary and clone boxes of the same Level share one index, matching `Draw.levelChar`.
+- [ ] Void nodes use `[v1]`, `[v2]`, not `[i]` or `[0]`.
+- [ ] SpecialEffect 11 still gets `[n]` from the full index list.
 - [ ] A real `???` area remains visible.
 - [ ] No unresolved owner renders `of ???`.
 - [ ] Normal/clone boxes show enter links when their level has them.
@@ -295,4 +316,5 @@ git commit -m "Use indexed infinity labels in tree and details"
 ## Execution Notes
 
 - This repository has no Unity unit-test project; use `dotnet build` plus the named Reborn hub cases.
-- If ASCII mode uses grid reading order instead of `blockList`, replace only the numbering loop, not the label/UI interfaces.
+- Port `ComputeTUILevels`; do not replace it with parent/block order.
+- If SpecialEffect 11 numbering is rejected, keep the visible `tuiLevels` index and omit `[n]` for hidden levels.
