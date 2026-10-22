@@ -11,7 +11,7 @@
 
 在层级浏览器里显示方块的特殊属性，重点是：
 
-- 玩家 / 可占据 / 锁定 / 重量 / 护盾 / Rooted；
+- 玩家 / 可占据 / Player Order / Flip / Counting / 主出口块 / clone / ∞ 进入 / ∞ 退出 / SpecialEffect；
 - Player Order；
 - 方块是否为主出口块（exit block）/ clone / ∞ 进入 / ∞ 退出；
 - Counting 墙的 `numSolved / numRequired`；
@@ -25,8 +25,7 @@
 - 不修改任何方块或关卡状态；
 - 不把关卡级机制伪装成方块自身属性；
 - 不恢复以前那种所有箱子满屏 `F/C/I/O` 徽标的做法；
-- 不改变现有传送、撤销、导航和渲染行为；
-- **不兼容 UsefulMod / Parabox-Editor 的 `usefull` 扩展**：不读取 `usefulTags`、`?WEI`、`?PIN`、自定义保存键或该编辑器额外添加的 mod 元数据；只读取游戏原版 `Block` / `World` 字段。
+- 不改变现有传送、撤销、导航和渲染行为。
 
 ## 2. 关键事实核对
 
@@ -81,7 +80,28 @@ if (block.SpecialEffect == 8)
 
 `exitblock = false` 只表示该引用不是主出口块，不等于“箱子只能出不能进”。显示上应叫“Primary / Exit block”或“Clone / non-primary ref”，不要用 `exitblock` 推断移动规则。
 
-### 2.4 SpecialEffect 表
+### 2.4 `Locked` / `Weight` / `Shield` / `Rooted` 的审计
+
+这些字段只存在于游戏程序集，不是官方自定义关卡能力：
+
+| 字段 | 游戏内实际使用 | 官方关卡格式 | CustomHubs |
+|---|---|---|---|
+| `Locked` | 只有 `DrawBlockBorder` 读取，成立时边框变红；没有任何加载/移动代码写入 | 无 | 无引用 |
+| `Weight` | 只有 `Block.ContainsWeight` 读取；该方法没有调用方；没有写入 | 无 | 无引用 |
+| `Shield` | 只有 `Block.ContainsShield` 读取；该方法没有调用方；没有写入 | 无 | 无引用 |
+| `Rooted*` | 只有字段声明；没有读取或写入 | 无 | 无引用 |
+
+结论：
+
+- 它们不是原版可玩关卡会出现的属性；
+- 不是官方自定义关卡格式字段；
+- CustomHubs 程序集也没有引用；
+- 常驻值只能是默认 false，除非其它代码通过反射写入；
+- **不要显示、不要用于推断行为、不要写进测试 fixture**。
+
+`PlayerOrder`、`Possessable`、`FlipH`、`SpecialEffect` 则确实由官方格式加载，保留。
+
+### 2.5 SpecialEffect 表
 
 来自 Parabox-Editor `place/utils.py`：
 
@@ -113,16 +133,14 @@ if (block.SpecialEffect == 8)
 可占据 / Possessable
 Player Order
 Flip
-Locked
-Weight
-Shield
-Rooted Left/Right/Up/Down
 Counting: solved/required
 Primary exit block / Clone / non-primary
 Infinite Enter / Infinite Exit
 SubLevel / OuterLevel null
 SpecialEffect # + name
 ```
+
+不显示以下字段：`Locked`、`Weight`、`Shield`、`Rooted*`。它们不符合原版关卡的能力模型，见 2.4。
 
 ### 3.2 关卡级
 
@@ -153,7 +171,7 @@ Float in space (需诊断确认)
 ```text
 (3,6) 打开层级: Area Transfer
 · Player · Possessable · Primary exit · Clone · Infinite Exit
-· Locked · Weight · Rooted L/R · Counting 3/5 · SE8
+· Counting 3/5 · SE8
 ```
 
 - 空属性不显示；
@@ -208,11 +226,7 @@ internal sealed class BlockTraits
     public bool IsInfExit;
     public bool IsPlayer;
     public bool IsPossessable;
-    public bool IsLocked;
-    public bool IsWeight;
-    public bool IsShield;
     public bool IsCounting;
-    public bool RootedLeft, RootedRight, RootedUp, RootedDown;
     public int PlayerOrder;
     public int SpecialEffect;
     public int Solved;
@@ -249,6 +263,7 @@ internal static class SpecialEffectCatalog
 - 只有 `shed` 没有 SE8：不显示 Shed 图标，但机制栏显示 Shed；
 - 普通方块不会因为关卡有 priority 而显示“优先”属性；
 - `exitblock=false` 只显示为非主引用，不显示“只能出不能进”；
+- 详情行、日志和测试 fixture 都不出现 `Locked` / `Weight` / `Shield` / `Rooted*`；
 - floatinspace 样例：日志可区分，UI 不误标根大厅；
 - 中英文、缩放、详情行截断正常；
 - `dotnet build -c Release` 0/0。

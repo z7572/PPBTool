@@ -13,7 +13,6 @@
 ## Global Constraints
 
 - This is a display-only feature; do not modify `World`, `Block`, levels, or save data.
-- Do not support UsefulMod / the Parabox-Editor `usefull` extensions: ignore `usefulTags`, `?WEI`, `?PIN`, custom save keys, and any editor-only metadata. Read only official `Block` / `World` fields.
 - Priority / Inner Push / Shed are **level-wide**; never put them in a block's own attribute list.
 - `SpecialEffect == 8` is the only trigger for Order / Shed / InnerPush glyphs.
 - Do not draw a glyph for a global mechanic on blocks without `SpecialEffect == 8`.
@@ -53,11 +52,7 @@
       public bool IsInfExit;
       public bool IsPlayer;
       public bool IsPossessable;
-      public bool IsLocked;
-      public bool IsWeight;
-      public bool IsShield;
       public bool IsCounting;
-      public bool RootedLeft, RootedRight, RootedUp, RootedDown;
       public int PlayerOrder;
       public int SpecialEffect;
       public int Solved;
@@ -83,17 +78,13 @@ Implement `From(Block)` as a null-safe snapshot. Use:
 - `IsInfExit = block.IsSomeInfExitBlock`
 - `IsPlayer = block.IsPlayer`
 - `IsPossessable = block.Possessable`
-- `IsLocked = block.Locked`
-- `IsWeight = block.Weight`
-- `IsShield = block.Shield`
-- Rooted flags from `RootedLeft/Right/Up/Down`
 - `IsCounting = block.numRequired > 0`
 - `Solved = block.numSolved`, `Required = block.numRequired`
 - `PlayerOrder = block.PlayerOrder`
 - `SpecialEffect = block.SpecialEffect`
 
 `Compact()` must return only truthy short labels, separated by ` · `, using `UiText` keys (defined in Task 3):
-`player`, `possessable`, `primary_exit`, `clone`, `inf_enter`, `inf_exit`, `locked`, `weight`, `shield`, `rooted`, `counting`, `se8`.
+`player`, `possessable`, `primary_exit`, `clone`, `inf_enter`, `inf_exit`, `counting`, `se8`.
 
 `SpecialEffectCatalog.Name(0..13)` must return:
 `None / Focus / Right flip / Left flip / Unused / Hub Intro block / Unused / Unused / Mechanic glyphs / Open void sides / Hub Intro ref / Hide in ASCII-grid / Multiplayer camera / Disable glyphs`.
@@ -199,7 +190,7 @@ public bool LogBlockTraits { get; }  // default false
 ```
 
 Add `UiText` keys:
-`player`, `possessable`, `primary_exit`, `clone`, `inf_enter`, `inf_exit`, `locked`, `weight`, `shield`, `rooted`, `counting`, `se8`, `action_push`, `action_enter`, `action_eat`, `action_possess`, `inner_push`, `shed`, `no_outer_level`, `special_effect`.
+`player`, `possessable`, `primary_exit`, `clone`, `inf_enter`, `inf_exit`, `counting`, `se8`, `action_push`, `action_enter`, `action_eat`, `action_possess`, `inner_push`, `shed`, `no_outer_level`, `special_effect`.
 
 - [ ] **Step 3: Replace duplicate block attribute formatting**
 
@@ -221,9 +212,6 @@ Log.Info("BlockTraits " + block.xpos + "," + block.ypos
     + " clone=" + traits.IsClone
     + " player=" + traits.IsPlayer
     + " possessable=" + traits.IsPossessable
-    + " locked=" + traits.IsLocked
-    + " weight=" + traits.IsWeight
-    + " shield=" + traits.IsShield
     + " counting=" + traits.Solved + "/" + traits.Required
     + " se=" + traits.SpecialEffect + "(" + SpecialEffectCatalog.Name(traits.SpecialEffect) + ")"
     + " outer=" + (block.OuterLevel == null ? "null" : block.OuterLevel.hubAreaName)
