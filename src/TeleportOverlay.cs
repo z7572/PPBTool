@@ -65,6 +65,7 @@ namespace PPBTool
         private readonly Dictionary<string, Texture> portalCache =
             new Dictionary<string, Texture>();
         private readonly HashSet<Block> infLogSeen = new HashSet<Block>();
+        private readonly HashSet<Block> traitLogSeen = new HashSet<Block>();
         private static FieldInfo drawIiiField;
         private static bool drawIiiRead;
 
@@ -91,6 +92,9 @@ namespace PPBTool
         private Texture texGradient;
         private Texture texInf;
         private Texture texInfOutline;
+        private Texture texOrder;
+        private Texture texShed;
+        private Texture texInnerPush;
         private Texture texEyeOpen;
         private Texture texEyeOpenSmall;
         private Texture texEyeClosed;
@@ -256,6 +260,7 @@ namespace PPBTool
             UiText.Refresh();
             portalCache.Clear();
             infLogSeen.Clear();
+            traitLogSeen.Clear();
             selectedColorOwner = null;
             if (!string.Equals(navScene, World.currentLevelName, StringComparison.Ordinal))
             {
@@ -371,6 +376,7 @@ namespace PPBTool
                 expanded.Clear();
                 portalCache.Clear();
                 infLogSeen.Clear();
+                traitLogSeen.Clear();
                 navRefs.Clear();
                 navScene = World.currentLevelName;
                 backHistory.Clear();
@@ -1883,7 +1889,21 @@ namespace PPBTool
             GUI.Label(new Rect(detailRect.x + 8f, detailRect.y + 2f, detailRect.width - 16f, 20f),
                 Ellipsize(BuildDetail(level), labelStyle, detailRect.width - 16f), labelStyle);
 
-            var canvas = new Rect(panel.x + 8f, panel.y + 32f, panel.width - 16f, panel.height - 32f - 8f);
+            LevelTraits mechanics = LevelTraits.Current();
+            bool showMechanics = mechanics.HasNonDefaultMechanics;
+            float mechanicsH = showMechanics ? 22f : 0f;
+            if (showMechanics)
+            {
+                DrawMechanicsBar(
+                    new Rect(panel.x + 6f, panel.y + 30f, panel.width - 12f, 20f),
+                    mechanics);
+            }
+
+            var canvas = new Rect(
+                panel.x + 8f,
+                panel.y + 32f + mechanicsH,
+                panel.width - 16f,
+                panel.height - 32f - 8f - mechanicsH);
             lastCanvas = canvas;
 
             Fill(canvas, MapBackground(level));
@@ -2124,6 +2144,59 @@ namespace PPBTool
             Fill(new Rect(x, y + h - thickY, w, thickY), color);
             Fill(new Rect(x, y + thickY, thickX, Mathf.Max(0f, h - thickY * 2f)), color);
             Fill(new Rect(x + w - thickX, y + thickY, thickX, Mathf.Max(0f, h - thickY * 2f)), color);
+        }
+
+        private void DrawBoxGlyphs(Rect r, Block block, int cell)
+        {
+            if (!config.ShowTraitIcons
+                || block == null
+                || block.SpecialEffect != 8
+                || block.SubLevel == null)
+            {
+                return;
+            }
+
+            int index = 0;
+            if (World.showAttemptOrder)
+            {
+                DrawTraitGlyph(r, texOrder, cell, index++);
+            }
+
+            if (World.shedEnabled)
+            {
+                DrawTraitGlyph(r, texShed, cell, index++);
+            }
+
+            if (World.innerPushEnabled)
+            {
+                DrawTraitGlyph(r, texInnerPush, cell, index);
+            }
+        }
+
+        private void DrawTraitGlyph(Rect r, Texture texture, int cell, int index)
+        {
+            if (texture == null)
+            {
+                return;
+            }
+
+            float size = cell * 0.75f;
+            float x = r.x + cell * 0.05f;
+            float y = r.y + cell * 0.05f + index * cell;
+            DrawTextureTinted(
+                new Rect(x, y, size, size),
+                texture,
+                new Color(0f, 0f, 0f, 0.35f));
+        }
+
+        private void DrawMechanicsBar(Rect rect, LevelTraits mechanics)
+        {
+            Fill(rect, Bar);
+            Border(rect, Edge, 1f);
+            GUI.Label(
+                new Rect(rect.x + 8f, rect.y + 2f, rect.width - 16f, 18f),
+                Ellipsize(mechanics.Compact(), smallStyle, rect.width - 16f),
+                smallStyle);
         }
 
         private void DrawPortal(Rect r, Floor floor, int cell)
@@ -2445,6 +2518,7 @@ namespace PPBTool
                 DrawBoxGrid(r, block, sub);
             }
 
+            DrawBoxGlyphs(r, block, cell);
             DrawBoxBorder(r, block, sub, cell);
             DrawFlipShineArt(r, block, cell);
             if (sub != null && GameState.Player != null
@@ -3391,7 +3465,7 @@ namespace PPBTool
                 }
                 else
                 {
-                    info = LevelGraph.BlockFlags(block);
+                    info = UiText.Get("block");
                 }
             }
             else if (floor != null)
@@ -3412,35 +3486,44 @@ namespace PPBTool
                 info += " · " + UiText.Get("legend_target");
             }
 
-            if (block != null && block.SubLevel != null)
+            if (block != null && config.ShowBlockTraits)
             {
-                string attributes = BlockAttributes(block);
-                if (!string.IsNullOrEmpty(attributes))
+                BlockTraits traits = BlockTraits.From(block);
+                string traitText = traits.Compact();
+                if (!string.IsNullOrEmpty(traitText))
                 {
-                    info += " · " + attributes;
+                    info += " · " + traitText;
                 }
+
+                if (traits.SpecialEffect > 0)
+                {
+                    info += " (" + SpecialEffectCatalog.Name(traits.SpecialEffect) + ")";
+                }
+
+                LogBlockTraits(block, traits);
             }
 
             return coord + "  " + info;
         }
 
-        private static string BlockAttributes(Block block)
+        private void LogBlockTraits(Block block, BlockTraits traits)
         {
-            string flags = LevelGraph.BlockFlags(block);
-            if (block.SubLevel != null)
+            if (!config.LogBlockTraits || block == null || !traitLogSeen.Add(block))
             {
-                if (flags == "box")
-                {
-                    return string.Empty;
-                }
-
-                if (flags.StartsWith("box "))
-                {
-                    return flags.Substring(4);
-                }
+                return;
             }
 
-            return flags;
+            Log.Info(
+                "BlockTraits (" + block.xpos + "," + block.ypos + ")"
+                + " root=" + traits.IsRoot
+                + " exit=" + traits.IsExitBlock
+                + " clone=" + traits.IsClone
+                + " player=" + traits.IsPlayer
+                + " possessable=" + traits.IsPossessable
+                + " counting=" + traits.Solved + "/" + traits.Required
+                + " se=" + traits.SpecialEffect + "(" + SpecialEffectCatalog.Name(traits.SpecialEffect) + ")"
+                + " outer=" + (block.OuterLevel == null ? "null" : block.OuterLevel.hubAreaName)
+                + " outerStart=" + (block.OuterLevelStart == null ? "null" : block.OuterLevelStart.hubAreaName));
         }
 
         private static Color FloorBaseColor(Floor.FloorType type)
@@ -4024,6 +4107,13 @@ namespace PPBTool
             if (texInfOutline == null)
             {
                 texInfOutline = GetPrivateTexture("InfParticleOutlineTex");
+            }
+
+            if (texOrder == null)
+            {
+                texOrder = GetPrivateTexture("Order");
+                texShed = GetPrivateTexture("Shed");
+                texInnerPush = GetPrivateTexture("InnerPush");
             }
 
             if (texEyeOpen == null)

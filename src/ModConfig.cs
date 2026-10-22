@@ -15,6 +15,9 @@ namespace PPBTool
         private readonly ConfigEntry<bool> levelThumbnails;
         private readonly ConfigEntry<bool> logSceneTree;
         private readonly ConfigEntry<bool> logInfSymbols;
+        private readonly ConfigEntry<bool> showBlockTraits;
+        private readonly ConfigEntry<bool> showTraitIcons;
+        private readonly ConfigEntry<bool> logBlockTraits;
         private readonly ConfigEntry<string> language;
 
         public ModConfig(ConfigFile config)
@@ -61,6 +64,18 @@ namespace PPBTool
                 "Log infinity symbol decisions (block, parent, count, depth, DrawStyle). " +
                 "Useful when the game and map disagree about Infinite Enter/Exit symbols.");
 
+            logBlockTraits = config.Bind(
+                "Diagnostics", "LogBlockTraits", false,
+                "Log the hovered block's traits once per map open. Useful for custom levels.");
+
+            showBlockTraits = config.Bind(
+                "UI", "ShowBlockTraits", true,
+                "Show a compact trait line for the hovered block.");
+
+            showTraitIcons = config.Bind(
+                "UI", "ShowTraitIcons", true,
+                "Draw the game's Order/Shed/InnerPush glyphs on SpecialEffect 8 blocks.");
+
             language = config.Bind(
                 "UI", "Language", "auto",
                 "UI language: auto (follow the game), zh, or en. The toolbar switch " +
@@ -103,6 +118,21 @@ namespace PPBTool
         public bool LogInfSymbols
         {
             get { return logInfSymbols.Value; }
+        }
+
+        public bool ShowBlockTraits
+        {
+            get { return showBlockTraits.Value; }
+        }
+
+        public bool ShowTraitIcons
+        {
+            get { return showTraitIcons.Value; }
+        }
+
+        public bool LogBlockTraits
+        {
+            get { return logBlockTraits.Value; }
         }
 
         public string Language

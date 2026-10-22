@@ -41,7 +41,7 @@ namespace PPBTool
                 List<Block> refs = block.SubLevel.BlocksWithThisAsTheirSubLevel;
                 Block primary = refs != null && refs.Count > 0 ? refs[0] : null;
                 traits.IsExitBlock = primary == block;
-                traits.IsClone = primary != block;
+                traits.IsClone = primary != null && primary != block;
             }
 
             return traits;
@@ -120,7 +120,12 @@ namespace PPBTool
 
         public static string Name(int id)
         {
-            return id >= 0 && id < Names.Length ? Names[id] : "Unknown";
+            if (id >= 0 && id < Names.Length)
+            {
+                return UiText.Get("se_name_" + id);
+            }
+
+            return "Unknown";
         }
 
         public static bool IsKnown(int id)
