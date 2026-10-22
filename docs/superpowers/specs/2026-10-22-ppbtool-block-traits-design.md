@@ -202,14 +202,16 @@ Priority: enter → eat → push → possess    Inner Push    Shed
 - 只画关卡实际启用的项；
 - 不是 SE8 的方块不画。
 
-### 4.4 可选地图徽标
+### 4.4 地图图标（SE8，必需）
 
-默认不在地图上给所有方块加属性徽标；如确需，单独配置：
+游戏里会显示 SE8 的 Order / Shed / InnerPush 图标，所以地图也要显示；但**只画 SE8 的机制图标**，不把 Player/Clone/Count 等所有属性都做成地图徽标。
+
+配置：
 
 ```ini
 [UI]
 ShowBlockTraits = true      ; 详情行
-ShowTraitIcons = false      ; 地图小图标
+ShowTraitIcons = true       ; 地图 SE8 图标
 LogBlockTraits = false      ; 诊断日志
 ```
 

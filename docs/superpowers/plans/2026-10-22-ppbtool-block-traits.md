@@ -4,7 +4,7 @@
 
 **Goal:** Display a block's real traits and the current level's Priority / Inner Push / Shed mechanics without mislabeling level-wide settings as per-block properties.
 
-**Architecture:** Add two small read-only model files (`BlockTraits`, `LevelTraits`) that read the live `Block` and `World` state. The overlay consumes them only in the detail line, the level mechanics strip, and the optional `SpecialEffect == 8` glyph renderer. No game state is modified.
+**Architecture:** Add two small read-only model files (`BlockTraits`, `LevelTraits`) that read the live `Block` and `World` state. The overlay consumes them in the detail line, the level mechanics strip, and the game-faithful `SpecialEffect == 8` glyph renderer. No game state is modified.
 
 **Tech Stack:** C# / BepInEx 5 / HarmonyX / Unity 2020.3 / IMGUI. Build with `dotnet build -c Release`.
 
@@ -186,6 +186,7 @@ Include one playable player, walls/floor, and one box block with `specialeffect 
 In `ModConfig` add:
 ```csharp
 public bool ShowBlockTraits { get; } // default true
+public bool ShowTraitIcons { get; }  // default true; SE8 map glyphs
 public bool LogBlockTraits { get; }  // default false
 ```
 
@@ -308,7 +309,7 @@ Add null-safe fields. If a texture is missing, skip that glyph; do not draw text
 - [ ] **Step 2: Implement the game rule**
 
 ```csharp
-if (block == null || block.SpecialEffect != 8 || block.SubLevel == null)
+if (!config.ShowTraitIcons || block == null || block.SpecialEffect != 8 || block.SubLevel == null)
     return;
 
 int index = 0;
@@ -435,5 +436,5 @@ git commit -m "Document block trait display"
 
 - This repository has no unit-test project for Unity types; each task uses `dotnet build` plus the named custom-level fixture. Do not invent a fake Unity test project for this change.
 - Use `LogBlockTraits` for the float investigation; do not ship a guess.
-- If the user chooses “detail only” and rejects SE8 map glyphs, Task 5 is skipped; Tasks 1–4 and 6 still stand.
 - If the user rejects conservative `no outer level`, stop before Task 6 and confirm the desired float predicate.
+- Map SE8 glyphs are required in this plan; do not treat Task 5 as optional.
