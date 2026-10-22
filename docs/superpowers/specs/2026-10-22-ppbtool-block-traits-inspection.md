@@ -314,35 +314,54 @@ Ref 1 1 1 0 0 0 ... Intro           // 普通引用，同格重叠
 
 因此“谁的无限退出”应取 **`block.SubLevel`（Intro）**，不是 `block.OuterLevel`（Multi Infinite）。
 
-当前 UI 只显示 `Multi Infinite`，说明现有标签用的是**父层/当前节点**，不是引用所属层；需要在引用和树标签中显式记录：
+但树标签应挂在**目的地节点 / 外层节点** `Multi Infinite` 上，因为用户想直观看到：
+
+> 这个 Multi Infinite 方块，是通过 Intro 的无限退出 #1 进入的。
+
+最终显示：
 
 ```text
-无限退出 #1 · Intro
+Multi Infinite  [无限退出 #1 of Intro]
+```
+
+详情悬浮同一个出口块时：
+
+```text
+无限退出 #1 of Intro
 ```
 
 ### 树标签
 
-左侧层级节点也应显示它作为哪个层的无限引用的信息：
+左侧层级节点要区分“入口引用”和“出口引用”：
 
 ```text
-Intro [refs ×2 · 无限退出 #1 · Intro]
+Multi Infinite  [无限退出 #1 of Intro]
 ```
 
 规则：
 
-- 遍历 `LevelNode.References`；
-- 对每个 `IsSomeInfEnterBlock`：
-  - owner = `Block.SubLevel` 的标题；
-  - degree = `SomeInfEnterNum`；
-  - 标签 `无限进入 #n · owner`；
-- 对每个 `IsSomeInfExitBlock`：
-  - owner = `Block.SubLevel` 的标题；
-  - degree = `SubLevel.infExitBlocks.IndexOf(Block)`；
-  - 标签 `无限退出 #n · owner`；
+- **无限退出**：
+  - 节点 = `block.OuterLevel`（出口块所在的目的地层）；
+  - owner = `block.SubLevel`（被退出的来源层）；
+  - degree = `block.SubLevel.infExitBlocks.IndexOf(block)`；
+  - 标签 `无限退出 #n of owner`；
+  - 出口块可能不在 `LevelNode.References` 里（`References` 是“谁引用本层”），必须从 `World.blocks` / 本层出口块集合中扫 `OuterLevel == level`。
+- **无限进入**：
+  - 节点 = `block.SubLevel`（进入的目标层）；
+  - owner = `block.OuterLevel`（进入块所在的来源层）；
+  - degree = `block.SomeInfEnterNum`；
+  - 标签 `无限进入 #n of owner`；
+  - 可从 `LevelNode.References` 中过滤进入块。
 - 同层多个引用用 ` · ` 分隔；
 - 使用游戏 0-based 索引；
+- 英文使用 `Infinite Exit #1 of Intro` / `Infinite Enter #0 of X`；
 - 不显示 `∞` 字符，使用“无限”。
 
 ### 详情
 
-`BlockTraits` 使用同样的 owner/degree 规则；若当前光标落在**同格重叠的普通引用**上，应提示该格还有隐藏引用，而不是伪造无限标签。引用选择器里也应显示 owner/degree。
+`BlockTraits` 使用同样的 owner/degree 规则：
+
+- 光标在**出口块**上 → `无限退出 #1 of Intro`；
+- 光标在**进入块**上 → `无限进入 #0 of X`。
+
+若当前光标落在**同格重叠的普通引用**上，应提示该格还有隐藏引用，而不是伪造无限标签。引用选择器里也应显示 owner/degree。

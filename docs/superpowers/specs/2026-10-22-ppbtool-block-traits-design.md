@@ -339,5 +339,5 @@ internal static class SpecialEffectCatalog
 5. 无限进入/退出重数使用游戏索引（0-based）。
 6. SE8 图标位于箱子内部第一格中心，大小等于内部格子 **× 0.75**；点进箱子后在内部层左上角第一格继续显示。
 7. 多个 SE8 图标按游戏逻辑向下各占一格。
-8. 无限进入/退出的 owner 取 `block.SubLevel` 的标题；例如 Intro 的无限退出显示为 `无限退出 #1 · Intro`。
-9. 左侧层级节点也显示其 ∞ 引用的 owner/degree。
+8. 无限退出的 owner 取 `block.SubLevel`（Intro），显示 `无限退出 #1 of Intro`；无限进入的 owner 取 `block.OuterLevel`（来源层）。
+9. 左侧层级节点：无限退出标签挂到 `block.OuterLevel` 节点（Multi Infinite），显示 `Multi Infinite [无限退出 #1 of Intro]`；无限进入标签挂到目标层节点。

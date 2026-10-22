@@ -465,16 +465,15 @@ These fixes come from the [inspection log](../../specs/2026-10-22-ppbtool-block-
 **Files:** Modify `src/BlockTraits.cs`, `src/UiText.cs`
 
 - [ ] Add `InfOwnerTitle` and `InfDegree`.
-  - `InfOwnerTitle = LevelGraph.DescribeLevel(block.SubLevel)` for both enter and exit;
-  - enter degree = `block.SomeInfEnterNum`;
-  - exit degree = `block.SubLevel.infExitBlocks.IndexOf(block)`.
+  - 无限退出：owner = `block.SubLevel`；degree = `block.SubLevel.infExitBlocks.IndexOf(block)`；
+  - 无限进入：owner = `block.OuterLevel`；degree = `block.SomeInfEnterNum`。
 - [ ] Format:
   ```text
-  Infinite Enter #0 · Area Transfer
-  Infinite Exit #2 · Void 7x7
+  无限退出 #1 of Intro
+  无限进入 #0 of Multi Infinite
   ```
   Use game 0-based indexes.
-- [ ] Fall back to plain `Infinite Enter` / `Infinite Exit` when the title or index is unavailable.
+- [ ] Fall back to plain `无限退出` / `无限进入` when the title or index is unavailable.
 - [ ] Verify with a level that has multiple `infenter`/`infexit` indexes.
 - [ ] Build and commit.
 
@@ -492,18 +491,23 @@ These fixes come from the [inspection log](../../specs/2026-10-22-ppbtool-block-
 
 **Files:** Modify `src/LevelGraph.cs` (`BuildTags`), `src/BlockTraits.cs` (shared owner/degree helper), `src/UiText.cs`
 
-- [ ] For every `LevelNode.References` entry whose block is `IsSomeInfEnterBlock` or `IsSomeInfExitBlock`, add a compact tag:
+- [ ] For every `LevelNode` entry whose block is `IsSomeInfEnterBlock` or `IsSomeInfExitBlock`, add a compact tag:
   ```text
-  无限退出 #1 · Intro
-  无限进入 #0 · Multi Infinite
+  Multi Infinite  [无限退出 #1 of Intro]
+  Target          [无限进入 #0 of Container]
   ```
-- [ ] Owner is `Block.SubLevel`, not the current node level and not `OuterLevel`.
-- [ ] Degree:
-  - enter = `Block.SomeInfEnterNum`;
-  - exit = `Block.SubLevel.infExitBlocks.IndexOf(Block)`.
+- [ ] 无限退出：
+  - node = `block.OuterLevel`（出口块所在的目的地层，即 Multi Infinite）；
+  - owner = `block.SubLevel`（来源层，即 Intro）；
+  - degree = `block.SubLevel.infExitBlocks.IndexOf(block)`；
+  - scan exit blocks with `OuterLevel == level` because they are not in `LevelNode.References`.
+- [ ] 无限进入：
+  - node = `block.SubLevel`（目标层）；
+  - owner = `block.OuterLevel`（来源层）；
+  - degree = `block.SomeInfEnterNum`.
 - [ ] Use game 0-based indexes.
 - [ ] Keep existing `refs ×N` / hidden tags; do not remove them.
-- [ ] Verify `Intro`'s second infinite exit shown on the `Multi Infinite` side as `无限退出 #1 · Intro`, not `Multi Infinite`.
+- [ ] Verify `Intro`'s second infinite exit shown on the `Multi Infinite` node as `无限退出 #1 of Intro`, not `Multi Infinite`.
 - [ ] Build and commit.
 
 ### Task 7: Documentation and final acceptance
