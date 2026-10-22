@@ -31,7 +31,12 @@ namespace PPBTool
 
         public bool HasNonDefaultMechanics
         {
-            get { return ShowAttemptOrder || Shed || InnerPush; }
+            get
+            {
+                return (ShowAttemptOrder && AttemptOrder != null && AttemptOrder.Count > 0)
+                    || Shed
+                    || InnerPush;
+            }
         }
 
         public string Compact()
