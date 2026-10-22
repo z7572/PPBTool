@@ -656,19 +656,27 @@ namespace PPBTool
                 }
             }
 
-            if (parent != null
-                && parent.IsSomeInfEnterBlock
-                && parent.SubLevel == level)
+            if (World.blocks != null)
             {
-                Level owner;
-                int degree;
-                if (LevelGraph.TryGetInfOwner(parent, out owner, out degree))
+                foreach (Block block in World.blocks)
                 {
-                    string ownerName = DescribeLevel(owner);
-                    if (!string.IsNullOrEmpty(ownerName))
+                    if (block == null
+                        || !block.IsSomeInfEnterBlock
+                        || block.SubLevel != level)
                     {
-                        infTags.Add(
-                            "Infinite Enter #" + degree + " of " + ownerName);
+                        continue;
+                    }
+
+                    Level owner;
+                    int degree;
+                    if (LevelGraph.TryGetInfOwner(block, out owner, out degree))
+                    {
+                        string ownerName = DescribeLevel(owner);
+                        if (!string.IsNullOrEmpty(ownerName))
+                        {
+                            infTags.Add(
+                                "Infinite Enter #" + degree + " of " + ownerName);
+                        }
                     }
                 }
             }

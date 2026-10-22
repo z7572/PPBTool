@@ -352,7 +352,7 @@ Multi Infinite  [refs ×2 · Infinite Exit #1 of Intro]
   - 节点 = `block.SubLevel`（进入的目标层）；
   - owner/degree = 扫描 `level.infEnterBlocks` 找到的 owner 与索引（对应 `from id`）；
   - 标签 `Infinite Enter #n of owner`；
-  - 只使用当前节点的 `ParentBlock`，不要再遍历所有入向引用，避免同一层出现多个 `#1`。
+  - 可以扫描所有入向引用，但必须按 `owner + degree` 去重；Epsilon 的多个引用会折叠成一个 `Infinite Enter #0 of Intro`，不会再显示多个 `???`。
 - 同层多个引用用 ` · ` 分隔；
 - 使用游戏 0-based 索引；
 - 使用英文 `Infinite Exit #1 of Intro` / `Infinite Enter #0 of X`，不随 UI 语言切换；

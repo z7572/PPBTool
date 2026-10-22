@@ -504,7 +504,7 @@ These fixes come from the [inspection log](../../specs/2026-10-22-ppbtool-block-
 - [ ] 无限进入：
   - node = `block.SubLevel`（目标层）；
   - owner/degree = 扫描 `level.infEnterBlocks` 找到的 owner 与索引（对应 `from id`）；
-  - **only use the current node's `ParentBlock`**, do not enumerate every incoming enter ref.
+  - 扫描所有入向引用，但按 `owner + degree` 去重；同一个 Epsilon 入口只显示一次。
 - [ ] Use game 0-based indexes and English text in both UI languages.
 - [ ] Remove the aggregate `Infinite Enter ×N` / `Infinite Exit ×N` tags; keep `refs ×N` / hidden tags / `void`.
 - [ ] Verify `Intro`'s second infinite exit is visible on the `Multi Infinite` node as `Infinite Exit #1 of Intro`.
