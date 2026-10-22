@@ -65,6 +65,7 @@ namespace PPBTool
                 { "open_level", new[] { "打开层级", "open level" } },
                 { "block", new[] { "方块", "block" } },
                 { "player", new[] { "玩家", "player" } },
+                { "player_order", new[] { "玩家序号", "player order" } },
                 { "possessable", new[] { "可占据", "possessable" } },
                 { "primary_exit", new[] { "主出口", "primary exit" } },
                 { "clone", new[] { "克隆", "clone" } },

@@ -53,9 +53,13 @@ namespace PPBTool
             if (IsPlayer)
             {
                 parts.Add(UiText.Get("player"));
+                if (PlayerOrder > 0)
+                {
+                    parts.Add(UiText.Get("player_order") + " " + PlayerOrder);
+                }
             }
 
-            if (IsPossessable)
+            if (IsPossessable && !IsPlayer)
             {
                 parts.Add(UiText.Get("possessable"));
             }

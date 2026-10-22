@@ -4112,7 +4112,15 @@ namespace PPBTool
             if (texOrder == null)
             {
                 texOrder = GetPrivateTexture("Order");
+            }
+
+            if (texShed == null)
+            {
                 texShed = GetPrivateTexture("Shed");
+            }
+
+            if (texInnerPush == null)
+            {
                 texInnerPush = GetPrivateTexture("InnerPush");
             }
 
