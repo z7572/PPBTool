@@ -71,43 +71,38 @@ foreach (Level level in World.levels)
 
 if (!World.InHub())
     list.Sort((a, b) => b.width.CompareTo(a.width));
+
+BoxIndex = list.IndexOf(level) + 1;
 ```
 
 `hubVisibility` must copy the game condition exactly.
 
-- [ ] **Step 2: Add the full list for SE11**
+- [ ] **Step 2: Add separate hidden and void sequences**
 
-Build `fullIndexLevels` by inserting SpecialEffect 11 levels into the same order (world order; non-hub width sort), because the game excludes them and would return `"b"`.
+SpecialEffect 11 is excluded from the visible TUI list. Give it an independent `[b1]`, `[b2]` sequence and do not consume a visible number.
 
-Assign:
-
-```csharp
-BoxIndex = fullIndexLevels.IndexOf(level) + 1;
-```
+For `level.InfZone`, use `[v1]`, `[v2]`; set `BoxIndex = -1`.
 
 Do not use `blockList`, `BlocksWithThisAsTheirSubLevel`, or `DebugID`.
 
-- [ ] **Step 3: Void sequence**
-
-For `level.InfZone`, assign `VoidIndex` from a separate 1-based sequence. `BoxIndex = -1`.
-
-- [ ] **Step 4: Add `IndexLabel`**
+- [ ] **Step 3: Add `IndexLabel`**
 
 ```text
 [1]
 [10]
+[b1]
 [v1]
 ""
 ```
 
 Never `[0]`, `[A]`, `[b]`, `[z]`, or `[?]`.
 
-- [ ] **Step 5: Build**
+- [ ] **Step 4: Build**
 
 Run: `dotnet build -c Release`
 Expected: 0 warnings / 0 errors.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add src/LevelGraph.cs
@@ -305,7 +300,7 @@ git commit -m "Use indexed infinity labels in tree and details"
 - [ ] `[9]` is followed by `[10]`, not `[A]`.
 - [ ] Primary and clone boxes of the same Level share one index, matching `Draw.levelChar`.
 - [ ] Void nodes use `[v1]`, `[v2]`, not `[i]` or `[0]`.
-- [ ] SpecialEffect 11 still gets `[n]` from the full index list.
+- [ ] SpecialEffect 11 uses `[b1]`, `[b2]`, and does not change visible numbers.
 - [ ] A real `???` area remains visible.
 - [ ] No unresolved owner renders `of ???`.
 - [ ] Normal/clone boxes show enter links when their level has them.
