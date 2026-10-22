@@ -99,12 +99,12 @@ namespace PPBTool
 
             if (IsInfEnter)
             {
-                parts.Add(InfLabel("inf_enter_of"));
+                parts.Add(InfLabel(true));
             }
 
             if (IsInfExit)
             {
-                parts.Add(InfLabel("inf_exit_of"));
+                parts.Add(InfLabel(false));
             }
 
             if (IsFlip)
@@ -130,9 +130,9 @@ namespace PPBTool
             return string.Join(" · ", parts.ToArray());
         }
 
-        private string InfLabel(string key)
+        private string InfLabel(bool enter)
         {
-            string label = UiText.Get(key);
+            string label = enter ? "Infinite Enter" : "Infinite Exit";
             if (InfDegree >= 0)
             {
                 label += " #" + InfDegree;

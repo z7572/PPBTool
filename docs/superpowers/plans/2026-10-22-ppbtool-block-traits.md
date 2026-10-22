@@ -469,11 +469,11 @@ These fixes come from the [inspection log](../../specs/2026-10-22-ppbtool-block-
   - 无限进入：owner = `block.OuterLevel`；degree = `block.SomeInfEnterNum`。
 - [ ] Format:
   ```text
-  无限退出 #1 of Intro
-  无限进入 #0 of Multi Infinite
+  Infinite Exit #1 of Intro
+  Infinite Enter #0 of Multi Infinite
   ```
-  Use game 0-based indexes.
-- [ ] Fall back to plain `无限退出` / `无限进入` when the title or index is unavailable.
+  Use game 0-based indexes and English text in both UI languages.
+- [ ] Fall back to plain `Infinite Exit` / `Infinite Enter` when the title or index is unavailable.
 - [ ] Verify with a level that has multiple `infenter`/`infexit` indexes.
 - [ ] Build and commit.
 
@@ -493,8 +493,8 @@ These fixes come from the [inspection log](../../specs/2026-10-22-ppbtool-block-
 
 - [ ] For every `LevelNode` entry whose block is `IsSomeInfEnterBlock` or `IsSomeInfExitBlock`, add a compact tag:
   ```text
-  Multi Infinite  [无限退出 #1 of Intro]
-  Target          [无限进入 #0 of Container]
+  Multi Infinite  [refs ×2 · Infinite Exit #1 of Intro]
+  Target          [refs ×N · Infinite Enter #0 of Container]
   ```
 - [ ] 无限退出：
   - node = `block.OuterLevel`（出口块所在的目的地层，即 Multi Infinite）；
@@ -504,11 +504,11 @@ These fixes come from the [inspection log](../../specs/2026-10-22-ppbtool-block-
 - [ ] 无限进入：
   - node = `block.SubLevel`（目标层）；
   - owner = `block.OuterLevel`（来源层）；
-  - degree = `block.SomeInfEnterNum`.
-- [ ] Use game 0-based indexes.
-- [ ] Keep existing `refs ×N` / hidden tags; do not remove them.
-- [ ] Tree label text/order is flexible: keep existing `refs ×N` / `hidden ×N` / `void` tags and append the infinity owner/degree; the tree already scrolls horizontally.
-- [ ] Verify `Intro`'s second infinite exit is visible on the `Multi Infinite` node and includes `无限退出 #1 of Intro`; do not replace existing tags.
+  - degree = `block.SomeInfEnterNum`；
+  - **only use the current node's `ParentBlock`**, do not enumerate every incoming enter ref.
+- [ ] Use game 0-based indexes and English text in both UI languages.
+- [ ] Remove the aggregate `Infinite Enter ×N` / `Infinite Exit ×N` tags; keep `refs ×N` / hidden tags / `void`.
+- [ ] Verify `Intro`'s second infinite exit is visible on the `Multi Infinite` node as `Infinite Exit #1 of Intro`.
 - [ ] Build and commit.
 
 ### Task 7: Documentation and final acceptance

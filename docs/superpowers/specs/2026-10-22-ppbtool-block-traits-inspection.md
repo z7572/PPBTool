@@ -335,41 +335,40 @@ Multi Infinite  [无限退出 #1 of Intro]
 左侧层级节点要区分“入口引用”和“出口引用”：
 
 ```text
-Multi Infinite  [refs ×2 · 无限退出 #1 of Intro]
+Multi Infinite  [refs ×2 · Infinite Exit #1 of Intro]
 ```
 
 树标签**不要求固定文案或固定顺序**；只要求：
 
+- 使用英文 `Infinite Enter/Exit`，不随中文 UI 切换；
 - 保留现有的 `refs ×N`、`hidden ×N`、`void` 等标签；
+- 删除 `Infinite Enter ×N` / `Infinite Exit ×N` 聚合计数，避免与具体 owner/degree 重复；
 - 追加无限引用的 owner/degree；
 - 多个标签用 ` · ` 分隔；
 - 树已有水平滚动，放不下时可滚动查看；
-- 详情行的格式仍固定为 `无限退出 #1 of Intro`。
+- 详情行的格式仍固定为 `Infinite Exit #1 of Intro`。
 
 规则：
 
-- **无限退出**：
-  - 节点 = `block.OuterLevel`（出口块所在的目的地层）；
-  - owner = `block.SubLevel`（被退出的来源层）；
-  - degree = `block.SubLevel.infExitBlocks.IndexOf(block)`；
-  - 标签 `无限退出 #n of owner`；
+- 标签 `Infinite Exit #n of owner`；
   - 出口块可能不在 `LevelNode.References` 里（`References` 是“谁引用本层”），必须从 `World.blocks` / 本层出口块集合中扫 `OuterLevel == level`。
-- **无限进入**：
+- **Infinite Enter**：
   - 节点 = `block.SubLevel`（进入的目标层）；
   - owner = `block.OuterLevel`（进入块所在的来源层）；
   - degree = `block.SomeInfEnterNum`；
-  - 标签 `无限进入 #n of owner`；
-  - 可从 `LevelNode.References` 中过滤进入块。
+  - 标签 `Infinite Enter #n of owner`；
+  - 只使用当前节点的 `ParentBlock`，不要再遍历所有入向引用，避免同一层出现多个 `#1`。
 - 同层多个引用用 ` · ` 分隔；
 - 使用游戏 0-based 索引；
-- 英文使用 `Infinite Exit #1 of Intro` / `Infinite Enter #0 of X`；
-- 不显示 `∞` 字符，使用“无限”。
+- 使用英文 `Infinite Exit #1 of Intro` / `Infinite Enter #0 of X`，不随 UI 语言切换；
+- 不显示 `∞` 字符。
 
 ### 详情
 
 `BlockTraits` 使用同样的 owner/degree 规则：
 
-- 光标在**出口块**上 → `无限退出 #1 of Intro`；
-- 光标在**进入块**上 → `无限进入 #0 of X`。
+- 光标在**出口块**上 → `Infinite Exit #1 of Intro`；
+- 光标在**进入块**上 → `Infinite Enter #0 of X`；
+- 标签固定英文。
 
 若当前光标落在**同格重叠的普通引用**上，应提示该格还有隐藏引用，而不是伪造无限标签。引用选择器里也应显示 owner/degree。

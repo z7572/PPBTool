@@ -192,8 +192,6 @@ namespace PPBTool
         private readonly List<LevelNode> roots = new List<LevelNode>();
         private readonly Dictionary<Level, LevelNode> nodesByLevel =
             new Dictionary<Level, LevelNode>();
-        private readonly Dictionary<Level, int> infInCounts = new Dictionary<Level, int>();
-        private readonly Dictionary<Level, int> infOutCounts = new Dictionary<Level, int>();
         private readonly Dictionary<Level, List<LevelReference>> referencesByLevel =
             new Dictionary<Level, List<LevelReference>>();
 
@@ -227,8 +225,6 @@ namespace PPBTool
         {
             roots.Clear();
             nodesByLevel.Clear();
-            infInCounts.Clear();
-            infOutCounts.Clear();
             referencesByLevel.Clear();
             PlayerNode = null;
             SceneLabel = GetSceneLabel();
@@ -278,8 +274,6 @@ namespace PPBTool
                         children.Add(level);
                     }
                 }
-
-                BuildInfinityCounts(levels);
 
                 var rootLevels = new List<Level>();
                 foreach (Level level in levels)
@@ -396,46 +390,6 @@ namespace PPBTool
             }
 
             return node;
-        }
-
-        private void BuildInfinityCounts(List<Level> levels)
-        {
-            foreach (Level level in levels)
-            {
-                if (level == null)
-                {
-                    continue;
-                }
-
-                if (level.infEnterBlocks != null)
-                {
-                    foreach (Block block in level.infEnterBlocks)
-                    {
-                        if (block != null && block.SubLevel != null)
-                        {
-                            Bump(infInCounts, block.SubLevel);
-                        }
-                    }
-                }
-
-                if (level.infExitBlocks != null)
-                {
-                    foreach (Block block in level.infExitBlocks)
-                    {
-                        if (block != null && block.OuterLevel != null)
-                        {
-                            Bump(infOutCounts, block.OuterLevel);
-                        }
-                    }
-                }
-            }
-        }
-
-        private static void Bump(Dictionary<Level, int> counts, Level level)
-        {
-            int value;
-            counts.TryGetValue(level, out value);
-            counts[level] = value + 1;
         }
 
         private void BuildReferences(List<Level> levels)
@@ -676,53 +630,39 @@ namespace PPBTool
                 tags.Add("hidden ×" + hidden);
             }
 
-            int count;
-            if (infInCounts.TryGetValue(level, out count) && count > 0)
-            {
-                tags.Add("Infinite Enter ×" + count);
-            }
-
-            if (infOutCounts.TryGetValue(level, out count) && count > 0)
-            {
-                tags.Add("Infinite Exit ×" + count);
-            }
-
             var infTags = new HashSet<string>();
             if (World.blocks != null)
             {
                 foreach (Block block in World.blocks)
                 {
-                    if (block == null)
+                    if (block == null
+                        || !block.IsSomeInfExitBlock
+                        || block.OuterLevel != level
+                        || block.SubLevel == null
+                        || block.SubLevel.infExitBlocks == null)
                     {
                         continue;
                     }
 
-                    if (block.IsSomeInfExitBlock
-                        && block.OuterLevel == level
-                        && block.SubLevel != null
-                        && block.SubLevel.infExitBlocks != null)
+                    int degree = block.SubLevel.infExitBlocks.IndexOf(block);
+                    string owner = DescribeLevel(block.SubLevel);
+                    if (degree >= 0 && !string.IsNullOrEmpty(owner))
                     {
-                        int degree = block.SubLevel.infExitBlocks.IndexOf(block);
-                        if (degree >= 0)
-                        {
-                            infTags.Add(
-                                UiText.Get("inf_exit") + " #" + degree
-                                + " of " + DescribeLevel(block.SubLevel));
-                        }
+                        infTags.Add("Infinite Exit #" + degree + " of " + owner);
                     }
+                }
+            }
 
-                    if (block.IsSomeInfEnterBlock && block.SubLevel == level)
-                    {
-                        string owner = block.OuterLevel != null
-                            ? DescribeLevel(block.OuterLevel)
-                            : null;
-                        if (!string.IsNullOrEmpty(owner))
-                        {
-                            infTags.Add(
-                                UiText.Get("inf_enter") + " #" + block.SomeInfEnterNum
-                                + " of " + owner);
-                        }
-                    }
+            if (parent != null
+                && parent.IsSomeInfEnterBlock
+                && parent.SubLevel == level
+                && parent.OuterLevel != null)
+            {
+                string owner = DescribeLevel(parent.OuterLevel);
+                if (!string.IsNullOrEmpty(owner))
+                {
+                    infTags.Add(
+                        "Infinite Enter #" + parent.SomeInfEnterNum + " of " + owner);
                 }
             }
 
