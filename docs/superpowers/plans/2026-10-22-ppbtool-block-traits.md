@@ -35,7 +35,7 @@ These are manual game fixtures; do not copy them into the repository.
 
 - **Global mechanics shown as block traits** — a level with `shed` or `inner_push` must not make every box say it has that property; only a SE8 block gets glyphs.
 - **SE8 without global mechanics** — an SE8 block with no enabled mechanic must show no Order/Shed/InnerPush icon.
-- **Float false positives** — root hub blocks and float-in-space blocks can both have `OuterLevel == null`; do not silently label all roots as floating.
+- **Float false positives** — floatinspace refs load into a hidden void; do not infer “float” from `OuterLevel == null` or from void membership.
 - **Detail overflow / localization** — long English and Chinese trait lines must not wrap or hide the level path.
 - **Diagnostics spam** — `LogBlockTraits` must log once per block per map open, not every frame.
 
@@ -356,47 +356,37 @@ git commit -m "Draw SpecialEffect 8 mechanic glyphs"
 
 ---
 
-### Task 6: Float-in-space diagnostic and conservative label
+### Task 6: Exclude floatinspace from trait UI
 
 **Files:**
-- Modify: `src/BlockTraits.cs` (`NoOuterLevel` / label)
-- Modify: `src/TeleportOverlay.cs` (detail label only)
-- Test: `tests/custom_levels/float_in_space.txt`
+- Modify: `docs/superpowers/specs/2026-10-22-ppbtool-block-traits-design.md` (already records the limitation)
+- Test: provided `Reborn's Hub v3` hub
 
 **Interfaces:**
-- Consumes: `Block.OuterLevel`, `Block.OuterLevelStart`, `Block.SubLevel`
-- Produces: `BlockTraits.IsRoot`, optional `NoOuterLevel` label; no hard float claim yet.
+- Produces: no `FloatInSpace` field, no float badge, no heuristic.
 
-- [ ] **Step 1: Create a float test fixture**
+- [ ] **Step 1: Verify the runtime shape**
 
-Create a level with a normal root block and a float-in-space reference block, following the official `Block ... floatinspace ...` format. Expected log:
-```text
-BlockTraits ... outer=null|... outerStart=null|... sub=...
-```
-for both; record whether a stable distinction exists.
+Open the provided `Reborn's Hub v3` hub and hover several `floatinspace` refs. Confirm that `OuterLevel` is a generated void, not null, and that no reliable distinction from other void refs exists in `Block` / `OuterLevelStart` / `SubLevel`.
 
-Also open the provided `Reborn's Hub v3` hub (36 floatinspace refs) and hover several hub refs; compare their `OuterLevel` / `OuterLevelStart` / `SubLevel` with a known non-float root block.
+Expected: no code path can recover the original `floatinspace` flag.
 
-- [ ] **Step 2: Add the conservative label**
+- [ ] **Step 2: Keep `floatinspace` out of the model**
 
-In `BlockTraits.Compact()` add:
-- `IsRoot` → `no_outer_level` (“无外层 / no outer level”);
-- do **not** add “Float in space” unless the fixture proves a distinction beyond `OuterLevel == null`.
+Do **not** add `FloatInSpace` to `BlockTraits`; do **not** show a “float” label. Only `OuterLevel == null` may use the neutral `no_outer_level` label.
 
-If a distinction is proven, add a separate `FloatInSpace` field and test; otherwise document the limitation and keep the conservative label.
+- [ ] **Step 3: Verify no false label**
 
-- [ ] **Step 3: Verify root hub and float block**
+- A floatinspace ref in a void: no “float” label;
+- A normal void reference: no “float” label;
+- A root-level block with `OuterLevel == null`: may show `no outer level`, not `float`.
 
-- Root hub exit block: shows `no outer level` if applicable, **not** `float`;
-- Float block: shows the same conservative label;
-- No behavior changes.
-
-- [ ] **Step 4: Build and commit**
+- [ ] **Step 4: Build and commit docs**
 
 ```bash
 dotnet build -c Release
-git add src/BlockTraits.cs src/TeleportOverlay.cs src/UiText.cs tests/custom_levels/float_in_space.txt
-git commit -m "Add conservative root/floating trait label"
+git add docs/superpowers/specs/2026-10-22-ppbtool-block-traits-design.md
+git commit -m "Document that floatinspace is not recoverable at runtime"
 ```
 
 ---
@@ -414,7 +404,7 @@ README must state:
 - Priority / Inner Push / Shed are level-wide;
 - SE8 is only a glyph marker;
 - `exitblock=false` is non-primary, not “exit-only”;
-- float-in-space is displayed conservatively because runtime has no boolean;
+- floatinspace is not displayed; the runtime cannot recover the flag (see Task 6);
 - config keys.
 
 - [ ] **Step 2: Build**
@@ -432,7 +422,7 @@ Expected: 0 warnings / 0 errors.
 - [ ] Non-SE8 box shows no mechanics glyph.
 - [ ] Normal box does not show Priority/Inner Push/Shed as its own trait.
 - [ ] Level mechanics bar appears only for non-default mechanics.
-- [ ] Root hub and float block labels do not falsely claim float.
+- [ ] No block is labeled “float” just because it is in a void.
 - [ ] Chinese/English switch updates all new text.
 - [ ] Detail line ellipsizes cleanly at narrow width.
 - [ ] No regression in teleport, back/forward, reference chooser, undo, or win button.
@@ -449,6 +439,6 @@ git commit -m "Document block trait display"
 ## Execution Notes
 
 - This repository has no unit-test project for Unity types; each task uses `dotnet build` plus the named custom-level fixture. Do not invent a fake Unity test project for this change.
-- Use `LogBlockTraits` for the float investigation; do not ship a guess.
-- If the user rejects conservative `no outer level`, stop before Task 6 and confirm the desired float predicate.
+- Do not attempt to recover `floatinspace` from runtime `Block` fields; use Task 6's documented limitation.
+- If a future request needs actual float detection, create a separate source-file parsing design.
 - Map SE8 glyphs are required in this plan; do not treat Task 5 as optional.

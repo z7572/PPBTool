@@ -68,9 +68,20 @@ if (block.SpecialEffect == 8)
 
 > Float in space 让 block 的 `OuterLevel` 为 null，使它漂浮在虚空里；这是为了编辑器里保持一棵 GameObject 树的 hack。
 
-运行时 `Block` **没有** `FloatInSpace` 布尔字段；只能根据加载后的 `OuterLevel` / `OuterLevelStart` / `SubLevel` 推断。根大厅的出口块也可能 `OuterLevel == null`，直接把它标成 floatinspace 会产生误报。
+运行时 `Block` **没有** `FloatInSpace` 布尔字段。更关键的是，加载 `floatinspace` 时游戏会：
 
-设计上必须先加诊断日志验证，再决定显示标签；第一版只显示“无外层 / root”，不武断断言 floatinspace。
+```csharp
+Block voidOwner = CreateInfZone();
+block.Init(voidOwner.SubLevel.width / 2, ..., voidOwner.SubLevel, targetLevel);
+```
+
+也就是把引用放进一个新的 7×7 隐藏 void，而不是让 `OuterLevel == null`。因此：
+
+- floatinspace 引用在运行时表现为 `OuterLevel` 是一个 void 的普通引用；
+- 这与某些无限进入/退出引用、或手工放进 void 的箱子结构相同；
+- 仅凭 `Block` 的 `OuterLevel` / `OuterLevelStart` / `SubLevel` **无法可靠恢复** `floatinspace` 布尔值。
+
+结论：**不显示 floatinspace 属性，不做启发式猜测**。如果以后确实需要，只能解析已加载的自定义关卡文件，或单独为来源文件建立映射；这超出本功能范围。
 
 ### 2.3 `exitblock` 是 Ref 的标记
 
@@ -184,10 +195,9 @@ DrawStyle (可选展示)
 
 ```text
 Root / no outer level
-Float in space (需诊断确认)
 ```
 
-第一版把 `OuterLevel == null` 显示为 **“无外层 / root”**；只有在 floatinspace 测试关卡里确认可区分后，才加 **“漂浮 / float”**。
+`OuterLevel == null` 只显示为 **“无外层 / root”**；不显示 `Float in space`，原因见 2.2。
 
 ## 4. UI 设计
 
@@ -293,12 +303,11 @@ internal static class SpecialEffectCatalog
 - 普通方块不会因为关卡有 priority 而显示“优先”属性；
 - `exitblock=false` 只显示为非主引用，不显示“只能出不能进”；
 - 详情行、日志和测试 fixture 都不出现 `Locked` / `Weight` / `Shield` / `Rooted*`；
-- floatinspace 样例：日志可区分，UI 不误标根大厅；
+- floatinspace 不显示，不把 void 内的引用误标成漂浮；
 - 中英文、缩放、详情行截断正常；
 - `dotnet build -c Release` 0/0。
 
 ## 7. 待确认
 
 1. 只做详情 + 机制栏，还是也要 SE8 地图图标？
-2. floatinspace 第一版接受“无外层/root”占位吗？
-3. `exitblock` 是否需要单独显示，还是归入 Clone/Primary 即可？
+2. `exitblock` 是否需要单独显示，还是归入 Clone/Primary 即可？
