@@ -13,6 +13,7 @@
 ## Global Constraints
 
 - This is a display-only feature; do not modify `World`, `Block`, levels, or save data.
+- Do not support UsefulMod / the Parabox-Editor `usefull` extensions: ignore `usefulTags`, `?WEI`, `?PIN`, custom save keys, and any editor-only metadata. Read only official `Block` / `World` fields.
 - Priority / Inner Push / Shed are **level-wide**; never put them in a block's own attribute list.
 - `SpecialEffect == 8` is the only trigger for Order / Shed / InnerPush glyphs.
 - Do not draw a glyph for a global mechanic on blocks without `SpecialEffect == 8`.
