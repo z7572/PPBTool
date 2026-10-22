@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give every tree row a stable box index and show, for every box, which Infinite Enter/Exit links can reach its level.
+**Goal:** Show a gray `[n]` box index before every tree title and use the same index/area label in Infinite Enter/Exit text.
 
-**Architecture:** Add `BoxIndex` to `LevelNode` from the reference list order. Add a read-only `InfLink` list to `BlockTraits`, resolved through the game's `Level.infEnterBlocks` / `infExitBlocks` lists. Add one `LevelGraph` label helper that combines `#index` with optional `hubAreaName`. The tree draws a fixed index column; tree tags and detail text use the shared helper. No game state changes.
+**Architecture:** Add a 1-based box index from the parent level's `blockList` order, plus a separate `[vN]` sequence for void nodes. Add a read-only `InfLink` list to `BlockTraits`, resolved through `Level.infEnterBlocks` / `infExitBlocks`. One `LevelGraph` helper combines index and optional `hubAreaName`. The tree draws `[n]` inline with the existing gray tag style. No game state changes.
 
 **Tech Stack:** C# / BepInEx 5 / HarmonyX / Unity 2020.3 / IMGUI / .NET Framework 4.6.
 
@@ -13,81 +13,84 @@
 ## Global Constraints
 
 - Display-only; never modify `World`, `Block`, `Level`, or save data.
-- Index is 0-based and never localized.
-- Do **not** use `Block.DebugID` as the box index.
+- Box indexes are 1-based; void indexes are a separate `v` sequence.
+- Do not use `Block.DebugID` as the index.
 - Do not fabricate `???`; only show it when it is the actual `hubAreaName`.
-- Infinite labels stay English in both UI languages:
-  `Infinite Enter #0 of #2 (Intro)`.
+- Infinite labels stay English in both UI languages.
 - Preserve existing tree tags: `refs ×N`, `hidden ×N`, `void`.
-- Root nodes have no index and must not show `#-1`.
+- Root nodes without an index draw no bracket.
 - Build with `dotnet build -c Release`; 0 warnings / 0 errors.
 
 ## Review Focus
 
-- A level with multiple references: primary, clone, infinite-enter, and infinite-exit boxes must get distinct indices.
-- A root level and a level whose `ParentBlock` is null must not render an index or `#-1`.
-- A `???` area that is a real `hubAreaName` must remain visible; an unresolved owner must not become `???`.
-- Tree index, indentation, expand arrow, tags, selection, and horizontal scroll must not overlap.
-- A normal/clone box with no infinite-enter references must stay clean; only an actual ∞ exit box gets an `Infinite Exit` line.
+- `blockList` order may not match ASCII mode's grid order; the code must record which order it uses.
+- A level with multiple references must assign one index per box reference, not one per Level.
+- Void nodes must not consume normal box numbers or show `[0]`.
+- SpecialEffect 11 hidden boxes must not get a visible number that the game does not show.
+- Inline `[n]` must not break indentation, arrow hit area, tags, selection, or horizontal scroll.
 
 ## File Structure
 
-- `src/LevelGraph.cs`
-  - `LevelNode.BoxIndex`
-  - `DescribeLevelWithIndex(...)`
-  - tree tag generation
-- `src/BlockTraits.cs`
-  - `InfLink` list for all boxes
-  - formatting without assuming enter/exit ownership
-- `src/TeleportOverlay.cs`
-  - tree index column
-  - detail formatting
-- `src/UiText.cs`
-  - only new labels that are actually localized; infinity labels stay literal English
+- `src/LevelGraph.cs` — box/void indexes, index label, tree tags, level label helper.
+- `src/BlockTraits.cs` — `InfLink` list for all boxes.
+- `src/TeleportOverlay.cs` — inline tree prefix and detail formatting.
+- `src/UiText.cs` — only localized fallbacks; infinity labels remain literal English.
 
 ---
 
-### Task 1: Add `BoxIndex` to the level graph
+### Task 1: Add box and void indexes
 
 **Files:**
-- Modify: `src/LevelGraph.cs` (`LevelNode`, `BuildNode`, `nodesByLevel`)
+- Modify: `src/LevelGraph.cs` (`LevelNode`, `BuildNode`, new per-level index maps)
 
 **Interfaces:**
 - Produces:
   ```csharp
-  public int LevelNode.BoxIndex; // -1 when no parent
-  public string LevelNode.IndexLabel; // "" or "#n"
+  public int LevelNode.BoxIndex;   // 1-based, -1 if none
+  public int LevelNode.VoidIndex;  // 1-based, -1 if not a void
+  public string LevelNode.IndexLabel; // "[1]" / "[v1]" / ""
   ```
 
-- [ ] **Step 1: Add the field and label**
+- [ ] **Step 1: Build per-level indexes**
 
-Add to `LevelNode`:
+For each level, enumerate `level.blockList` in order and assign a 1-based index to each block with `SubLevel != null`:
+
 ```csharp
-public int BoxIndex;
-public string IndexLabel => BoxIndex >= 0 ? "#" + BoxIndex : string.Empty;
+int n = 0;
+foreach (Block b in level.blockList)
+{
+    if (b != null && b.SubLevel != null && b.SpecialEffect != 11)
+        boxIndexByBlock[b] = ++n;
+}
 ```
 
-- [ ] **Step 2: Compute the index**
+- [ ] **Step 2: Assign indexes to nodes**
 
-In `BuildNode`, after `ParentBlock` is known:
-```csharp
-BoxIndex = parent != null && parent.SubLevel != null
-    ? parent.SubLevel.BlocksWithThisAsTheirSubLevel.IndexOf(parent)
-    : -1;
+For a node with `ParentBlock`:
+- normal box: `BoxIndex = boxIndexByBlock[ParentBlock]`;
+- void node (`ParentBlock == null` or `level.InfZone`): use a separate global `VoidIndex` sequence in graph build order;
+- SpecialEffect 11: `BoxIndex = -1`, no normal number.
+
+- [ ] **Step 3: Add `IndexLabel`**
+
+```text
+[1]
+[v1]
+""
 ```
 
-`IndexOf` must use the same reference list used by the reference chooser; do not use `DebugID`.
+Never `[0]`, `#-1`, or `[?]`.
 
-- [ ] **Step 3: Build**
+- [ ] **Step 4: Build**
 
 Run: `dotnet build -c Release`
 Expected: 0 warnings / 0 errors.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add src/LevelGraph.cs
-git commit -m "Add box index to level nodes"
+git commit -m "Add box and void indexes"
 ```
 
 ### Task 2: Resolve infinite access for every box
@@ -110,36 +113,23 @@ git commit -m "Add box index to level nodes"
   public List<InfLink> BlockTraits.InfLinks;
   ```
 
-- [ ] **Step 1: Add the link model**
+- [ ] **Step 1: Add enter links for any box with SubLevel**
 
-`BlockTraits.From(block)` must populate `InfLinks` for any block with `SubLevel != null`:
+Scan `World.blocks` for:
 
-1. scan `World.blocks` for:
-   ```csharp
-   other.IsSomeInfEnterBlock && other.SubLevel == block.SubLevel
-   ```
-2. resolve each through `TryGetInfOwner`;
-3. deduplicate by `(Owner, Degree)`.
+```csharp
+other.IsSomeInfEnterBlock && other.SubLevel == block.SubLevel
+```
 
-This covers primary, clone, infinite-enter, and infinite-exit boxes.
+Resolve each with `TryGetInfOwner`, then deduplicate by `(Owner, Degree)`.
 
 - [ ] **Step 2: Add the block's own exit link**
 
-If `block.IsSomeInfExitBlock`, add its own link with:
-```csharp
-Enter = false;
-Owner = resolved owner;
-Degree = resolved degree;
-```
+If `block.IsSomeInfExitBlock`, add its own link (`Enter = false`). Do not copy the parent level's exits onto every box.
 
-Do not scan the parent level and attach its exit links to every box.
+- [ ] **Step 3: Keep an unresolved-owner fallback**
 
-- [ ] **Step 3: Keep the no-owner fallback**
-
-If `TryGetInfOwner` fails:
-- keep the link with `Owner = null`;
-- render `Infinite Enter #n` or `Infinite Exit #n`;
-- never render `of ???`.
+If `TryGetInfOwner` fails, keep the link with `Owner = null`; render `Infinite Enter #n` without `of ...`. Never render `of ???`.
 
 - [ ] **Step 4: Build**
 
@@ -156,40 +146,37 @@ git commit -m "Collect infinite access for every box"
 ### Task 3: Add the shared level label
 
 **Files:**
-- Modify: `src/LevelGraph.cs` (`nodesByLevel`, new helper)
-- Modify: `src/BlockTraits.cs` (`Compact` uses a label provider)
+- Modify: `src/LevelGraph.cs`
+- Modify: `src/BlockTraits.cs` (label provider)
 
 **Interfaces:**
 - Produces:
   ```csharp
   public string DescribeLevelWithIndex(Level level);
   ```
-- Format:
-  ```text
-  #2 (Intro)
-  #2
-  Intro
-  ```
-- Consumes: `LevelNode.BoxIndex`, `Level.hubAreaName`.
+- Consumes: `LevelNode.IndexLabel`, `Level.hubAreaName`.
 
-- [ ] **Step 1: Implement the helper**
+- [ ] **Step 1: Implement the label helper**
 
-Use the graph's `nodesByLevel` lookup:
-- area + index → `#2 (Intro)`;
-- index only → `#2`;
-- area only → `Intro`;
-- neither → `WxH`, never `???` except a real area name.
+Rules:
+
+```text
+[2] (Intro)   // index + area
+[2]           // index only
+Intro         // root area, no index
+5x5           // no area/index
+```
+
+Do not use `???` as a fallback.
 
 - [ ] **Step 2: Use it for infinity labels**
 
-Change `BlockTraits.Compact` to accept the graph label provider, or assign the label before `Compact`:
-```csharp
-traits.InfOwnerTitle = graph.DescribeLevelWithIndex(owner);
-```
+Change `BlockTraits.Compact` to accept a `Func<Level, string>` label provider, or assign each link's owner label before formatting.
 
-The final text:
+Final text:
+
 ```text
-Infinite Enter #0 of #2 (Intro)
+Infinite Enter #0 of [2] (Intro)
 Infinite Exit #1 of Intro
 ```
 
@@ -205,84 +192,72 @@ git add src/LevelGraph.cs src/BlockTraits.cs
 git commit -m "Label levels with box index and area"
 ```
 
-### Task 4: Draw the index column in the tree
+### Task 4: Draw inline gray index brackets
 
 **Files:**
 - Modify: `src/TeleportOverlay.cs` (`DrawTree`)
-- Consumes: `LevelNode.IndexLabel`, `BoxIndex`
+- Consumes: `LevelNode.IndexLabel`
 
-- [ ] **Step 1: Reserve the index width**
+- [ ] **Step 1: Compute and draw the prefix**
 
-Add:
-```csharp
-const float IndexW = 34f;
-```
+At the current `textX`:
+- if `IndexLabel` is empty, draw the title at `textX`;
+- otherwise draw `smallStyle` `[n]` in gray, measure its width, and draw the title with one space after it.
 
-Include it in `contentW`:
-```csharp
-float need = 24f + node.Depth * 13f + IndexW + titleW + tagsW + 90f;
-```
+- [ ] **Step 2: Keep existing layout**
 
-- [ ] **Step 2: Draw the label and shift the title**
+- no fixed index column;
+- `contentW` includes index width;
+- tags still start after the title;
+- arrow and row hit rect unchanged;
+- root nodes start directly with the title.
 
-- draw `node.IndexLabel` at the old title position with `smallStyle`;
-- draw the title at `textX + IndexW`;
-- draw tags after the shifted title;
-- leave the row hit rect and arrow unchanged.
-
-- [ ] **Step 3: Handle root nodes**
-
-If `BoxIndex < 0`, draw nothing in the index column; do not draw `#-1`.
-
-- [ ] **Step 4: Build and verify**
+- [ ] **Step 3: Build and verify**
 
 Run: `dotnet build -c Release`
 Manual:
-- hub area row: `#n Intro`;
-- interior row: `#n Room 7x7`;
-- horizontal scroll keeps all columns aligned.
+- `[1] Intro`;
+- `[10] Next Box`;
+- `[v1] Void 7x7`;
+- horizontal scroll keeps all text aligned.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add src/TeleportOverlay.cs
-git commit -m "Draw box index in level tree"
+git commit -m "Draw inline box index brackets"
 ```
 
-### Task 5: Use indexed labels in tree tags and details
+### Task 5: Use index/area labels in tree and details
 
 **Files:**
 - Modify: `src/LevelGraph.cs` (`BuildTags`)
 - Modify: `src/TeleportOverlay.cs` (`BuildDetail`)
-- Modify: `src/UiText.cs` only if a new fallback is needed
+- Modify: `src/UiText.cs` only for a localized fallback
 
 - [ ] **Step 1: Tree tags**
 
-For each enter/exit link, use:
+Use the shared label for each enter/exit link:
+
 ```text
-Infinite Enter #0 of #2 (Intro)
+Infinite Enter #0 of [2] (Intro)
 Infinite Exit #1 of Intro
 ```
-Keep `refs ×N`, `hidden ×N`, `void`; do not add back
-`Infinite Enter ×N` / `Infinite Exit ×N`.
+
+Keep `refs ×N`, `hidden ×N`, `void`; do not re-add aggregate `Infinite Enter ×N` / `Infinite Exit ×N`.
 
 - [ ] **Step 2: Detail**
 
-Show every `InfLink` from Task 2, deduplicated by owner+degree:
-```text
-Infinite Enter #0 of #2 (Intro)
-Infinite Exit #1 of Intro
-```
-A normal/clone box with no enter links shows nothing for infinity.
+Show every deduplicated `InfLink` for the hovered box, including normal/clone boxes. Only an actual ∞ exit block gets its exit line.
 
 - [ ] **Step 3: Build and verify**
 
 Run: `dotnet build -c Release`
 Manual fixtures:
-- Epsilon: `Infinite Enter #0 of #1 (Intro)` (or area-only label if no index);
-- Multi Infinite: `Infinite Exit #1 of Intro`;
-- `(No) Reference`: one `Infinite Enter #1 of Epsilon`, not four;
-- a normal box with no ∞ link: no fake label.
+- Epsilon: `Infinite Enter #0 of ... Intro`;
+- Multi Infinite: `Infinite Exit #1 of ... Intro`;
+- `(No) Reference`: one `Infinite Enter #1 of ... Epsilon`, not four;
+- a normal box with no ∞ links: no fake infinity text.
 
 - [ ] **Step 4: Commit**
 
@@ -294,21 +269,22 @@ git commit -m "Use indexed infinity labels in tree and details"
 ### Task 6: Documentation and final acceptance
 
 **Files:**
-- Modify: `README.md`
 - Modify: `docs/superpowers/specs/2026-10-23-ppbtool-box-index-design.md`
+- Modify: `README.md`
 
-- [ ] Document that the index is a reference-list index, not the editor's `id`.
-- [ ] Document the `#n (Area)` label and English-only infinity text.
+- [ ] Document that the index order is `blockList` order unless changed to ASCII grid order.
+- [ ] Document `[n]`, `[vN]`, and the SpecialEffect 11 rule.
 - [ ] Run the full manual checklist.
 - [ ] Build `dotnet build -c Release`; expect 0/0.
 - [ ] Commit.
 
 ## Manual Checklist
 
-- [ ] Every non-root tree row has a stable 0-based index.
-- [ ] Primary and clone boxes of the same level have different indices.
-- [ ] A box inside a level shows `#n` with no area.
-- [ ] A hub row shows `#n (Area)` or the agreed area-only form.
+- [ ] Every visible non-root box has a `[n]` or `[vN]`.
+- [ ] `[9]` is followed by `[10]`, not `[A]`.
+- [ ] Primary and clone boxes have distinct indexes.
+- [ ] Void nodes do not consume normal box numbers.
+- [ ] SpecialEffect 11 does not show a number the game hides.
 - [ ] A real `???` area remains visible.
 - [ ] No unresolved owner renders `of ???`.
 - [ ] Normal/clone boxes show enter links when their level has them.
@@ -319,4 +295,4 @@ git commit -m "Use indexed infinity labels in tree and details"
 ## Execution Notes
 
 - This repository has no Unity unit-test project; use `dotnet build` plus the named Reborn hub cases.
-- If area-only owner text is preferred, keep the tree index but omit `#n` from owner text. Confirm before implementing.
+- If ASCII mode uses grid reading order instead of `blockList`, replace only the numbering loop, not the label/UI interfaces.

@@ -15,10 +15,10 @@
 - area name（如果该层在大厅里有名字）；
 - 例如：
   ```text
-  #2  Room 7x7
+  [2]  Room 7x7
   ```
   ```text
-  Infinite Enter #0 of #2 (Intro)
+  Infinite Enter #0 of [2] (Intro)
   ```
   ```text
   Infinite Exit #1 of Intro
@@ -40,49 +40,68 @@
 
 ## 3. 索引定义
 
-推荐：
+不再使用“引用列表序号”直接作为最终编号，也不再新增固定索引列。
 
-```csharp
-boxIndex = block.SubLevel.BlocksWithThisAsTheirSubLevel.IndexOf(block)
-```
-
-即：这个箱子在“所有引用该子层的箱子”列表中的序号。
-
-优点：
-
-- 同一 Level 的 primary/clone/inf 引用可以区分；
-- 与引用选择器、hidden overlap 的顺序一致；
-- `Block.DebugID` 不用，因为它是运行时创建顺序，不是稳定箱子编号。
-
-缺点：
-
-- 它不是编辑器文件里的 `Block id`；
-- 但运行时没有保存编辑器 id，这是可用的最稳定索引。
-
-显示为 0-based：
+目标：模仿游戏 ASCII mode 中每个箱子左侧的标号，但把 A~Z 改成连续数字：
 
 ```text
-#0
-#1
-#2
+[1] Intro
+[2] Room 7x7
+[10] Next Box
 ```
 
-根层没有 `ParentBlock`，索引留空；树里只显示标题。
+规则：
+
+- 1-based；
+- 每个箱子在其**父层**内编号；
+- 顺序采用父层 `blockList` 中箱子的创建/文件顺序；
+- 只对真正可见的箱子编号；
+- 不显示 A~Z，超过 9 后直接 `10`、`11`；
+- gray small bracket，和右侧 `[refs ×1]` 同一风格。
+
+### SpecialEffect 11
+
+`SpecialEffect == 11` 的箱子在 ASCII mode 中不显示。
+
+建议：
+
+- 不给它分配数字编号；
+- 树里可显示 `[hidden]` 或直接无编号；
+- 不伪造 `[?]`。
+
+### 虚空
+
+虚空不是普通关卡内的箱子，没有 ASCII 标号。
+
+建议单独编号：
+
+```text
+[v1] Void 7x7
+[v2] Void 7x7
+```
+
+- 虚空使用独立的 `v` 序列，不占用普通箱子数字；
+- 如果不想显示虚空编号，则显示 `[void]`，但不要显示 `[0]` 或 `[?]`。
+
+该点需要确认。
 
 ## 4. 左侧层级树 UI
 
-新增一个固定宽度的索引列，放在标题左边：
+不新增索引列。索引直接作为灰色小字放在标题左边：
 
 ```text
-[#0] Intro
-[#1] Room 7x7
-  [#0] Box (3,4)
+[1] Intro  [refs ×1 Infinite Exit #0 of Intro]
+[2] Room 7x7
+  [3] Box (3,4)
 ```
 
-- 使用 `smallStyle`，宽度固定（例如 `34px`）；
-- 保留现有折叠箭头、缩进、选中/悬停、水平滚动和 tags；
-- 只有 `ParentBlock != null` 的节点显示 `#n`；
-- 索引不参与语言切换。
+- 使用 `smallStyle`；
+- `[n]` 灰色；
+- 右侧 `[refs ×N ...]` 继续使用现有灰色风格；
+- 保留折叠箭头、缩进、选中/悬停、水平滚动；
+- 根节点/无索引节点不显示方括号；
+- 不预留固定宽度列，标题紧跟 `]` 后一个空格；
+- `contentW` 计算要包含 `[n]` 宽度。
 
 ## 5. owner 文案
 
@@ -94,15 +113,19 @@ string LevelLabel(Level level)
 
 规则：
 
-1. 如果 `level.hubAreaName` 非空：
+1. 如果 `level.hubAreaName` 非空且有索引：
    ```text
-   #2 (Intro)
+   [2] (Intro)
    ```
-2. 如果无 area：
+2. 如果无 area 但有索引：
    ```text
-   #2
+   [2]
    ```
-3. 找不到节点：
+3. 如果根层有 area 但无索引：
+   ```text
+   Intro
+   ```
+4. 找不到节点：
    ```text
    5x5
    ```
@@ -111,14 +134,15 @@ string LevelLabel(Level level)
 推荐统一格式：
 
 ```text
-#<index> (<area>)
-#<index>
+[<index>] (<area>)
+[<index>]
+Intro
 ```
 
 例：
 
 ```text
-Infinite Enter #0 of #2 (Intro)
+Infinite Enter #0 of [2] (Intro)
 Infinite Exit #1 of Intro
 ```
 
@@ -141,7 +165,7 @@ Infinite Exit #1 of Intro
 3. 按 owner+degree 去重；
 4. 显示：
    ```text
-   Infinite Enter #0 of #2 (Intro)
+   Infinite Enter #0 of [2] (Intro)
    ```
 
 这适用于主箱子、clone、∞ 进入箱和 ∞ 退出箱。
@@ -168,14 +192,15 @@ Infinite Exit #1 of Intro
 - 关卡内部：`Room`/`Box` 节点左边有索引；
 - 同层多个箱子可以通过索引区分；
 - detail owner：
-  - 有 area → `#2 (Intro)`；
-  - 无 area → `#2`；
+  - 有 area → `[2] (Intro)`；
+  - 无 area → `[2]`；
 - 不出现伪造的 `???`；
 - 水平滚动后索引和标题仍对齐；
 - 中英文切换不影响索引文本。
 
 ## 9. 待确认
 
-1. 索引是否采用 `BlocksWithThisAsTheirSubLevel.IndexOf(block)`？
-2. 有 area 时显示 `#2 (Intro)` 还是只显示 `Intro`？
-3. 索引列宽度固定 `34px` 是否足够？
+1. 父层 `blockList` 顺序是否与游戏 ASCII mode 的箱子标号顺序一致？如果 ASCII mode 按网格阅读顺序编号，需要改为 `y/x` 扫描。
+2. 虚空使用独立 `[v1]` / `[v2]`，还是不显示编号只显示 `[void]`？
+3. `SpecialEffect == 11` 的隐藏箱子，显示 `[hidden]` 还是完全不显示索引？
+4. 索引 1-based `[1]`、`[2]` 是否符合预期？
