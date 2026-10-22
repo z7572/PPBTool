@@ -2166,7 +2166,7 @@ namespace PPBTool
                 block,
                 r.x + cw * 0.5f,
                 r.y + ch * 0.5f,
-                Mathf.Min(cw, ch),
+                Mathf.Min(cw, ch) * 0.75f,
                 ch);
         }
 
@@ -2187,7 +2187,7 @@ namespace PPBTool
                 parent,
                 originX + cell * 0.5f,
                 originY + cell * 0.5f,
-                cell,
+                cell * 0.75f,
                 cell);
         }
 

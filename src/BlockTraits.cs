@@ -49,17 +49,22 @@ namespace PPBTool
                 traits.IsClone = primary != null && primary != block;
             }
 
-            if (block != null && block.SubLevel != null
-                && (block.IsSomeInfEnterBlock || block.IsSomeInfExitBlock))
+            if (block != null && (block.IsSomeInfEnterBlock || block.IsSomeInfExitBlock))
             {
-                traits.InfOwnerTitle = LevelGraph.DescribeLevel(block.SubLevel);
                 if (block.IsSomeInfEnterBlock)
                 {
                     traits.InfDegree = block.SomeInfEnterNum;
+                    traits.InfOwnerTitle = block.OuterLevel != null
+                        ? LevelGraph.DescribeLevel(block.OuterLevel)
+                        : null;
                 }
-                else if (block.SubLevel.infExitBlocks != null)
+                else if (block.SubLevel != null)
                 {
-                    traits.InfDegree = block.SubLevel.infExitBlocks.IndexOf(block);
+                    traits.InfOwnerTitle = LevelGraph.DescribeLevel(block.SubLevel);
+                    if (block.SubLevel.infExitBlocks != null)
+                    {
+                        traits.InfDegree = block.SubLevel.infExitBlocks.IndexOf(block);
+                    }
                 }
             }
 
@@ -135,7 +140,7 @@ namespace PPBTool
 
             if (!string.IsNullOrEmpty(InfOwnerTitle))
             {
-                label += " · " + InfOwnerTitle;
+                label += " of " + InfOwnerTitle;
             }
 
             return label;

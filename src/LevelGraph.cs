@@ -687,6 +687,47 @@ namespace PPBTool
                 tags.Add("Infinite Exit ×" + count);
             }
 
+            var infTags = new HashSet<string>();
+            if (World.blocks != null)
+            {
+                foreach (Block block in World.blocks)
+                {
+                    if (block == null)
+                    {
+                        continue;
+                    }
+
+                    if (block.IsSomeInfExitBlock
+                        && block.OuterLevel == level
+                        && block.SubLevel != null
+                        && block.SubLevel.infExitBlocks != null)
+                    {
+                        int degree = block.SubLevel.infExitBlocks.IndexOf(block);
+                        if (degree >= 0)
+                        {
+                            infTags.Add(
+                                UiText.Get("inf_exit") + " #" + degree
+                                + " of " + DescribeLevel(block.SubLevel));
+                        }
+                    }
+
+                    if (block.IsSomeInfEnterBlock && block.SubLevel == level)
+                    {
+                        string owner = block.OuterLevel != null
+                            ? DescribeLevel(block.OuterLevel)
+                            : null;
+                        if (!string.IsNullOrEmpty(owner))
+                        {
+                            infTags.Add(
+                                UiText.Get("inf_enter") + " #" + block.SomeInfEnterNum
+                                + " of " + owner);
+                        }
+                    }
+                }
+            }
+
+            tags.AddRange(infTags);
+
             return string.Join(" ", tags.ToArray());
         }
 
