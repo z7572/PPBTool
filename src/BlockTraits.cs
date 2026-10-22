@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace PPBTool
@@ -19,8 +20,7 @@ namespace PPBTool
         public int SpecialEffect;
         public int Solved;
         public int Required;
-        public int InfDegree;
-        public string InfOwnerTitle;
+        public List<InfLink> InfAccess = new List<InfLink>();
 
         public static BlockTraits From(Block block)
         {
@@ -38,7 +38,6 @@ namespace PPBTool
                 SpecialEffect = block != null ? block.SpecialEffect : 0,
                 Solved = block != null ? block.numSolved : 0,
                 Required = block != null ? block.numRequired : 0,
-                InfDegree = -1,
             };
 
             if (block != null && block.SubLevel != null)
@@ -49,21 +48,62 @@ namespace PPBTool
                 traits.IsClone = primary != null && primary != block;
             }
 
-            if (block != null && (block.IsSomeInfEnterBlock || block.IsSomeInfExitBlock))
+            if (block != null && block.SubLevel != null && World.blocks != null)
             {
-                Level owner;
-                int degree;
-                if (LevelGraph.TryGetInfOwner(block, out owner, out degree))
+                foreach (Block other in World.blocks)
                 {
-                    traits.InfOwnerTitle = LevelGraph.DescribeLevel(owner);
-                    traits.InfDegree = degree;
+                    if (other != null
+                        && other.IsSomeInfEnterBlock
+                        && other.SubLevel == block.SubLevel)
+                    {
+                        AddInfLink(traits, other, true);
+                    }
                 }
+            }
+
+            if (block != null && block.IsSomeInfExitBlock)
+            {
+                AddInfLink(traits, block, false);
             }
 
             return traits;
         }
 
-        public string Compact()
+        private static void AddInfLink(BlockTraits traits, Block block, bool enter)
+        {
+            Level owner;
+            int degree;
+            bool resolved = LevelGraph.TryGetInfOwner(block, out owner, out degree);
+            if (!resolved)
+            {
+                owner = null;
+                degree = -1;
+            }
+
+            foreach (InfLink existing in traits.InfAccess)
+            {
+                if (existing.Enter == enter
+                    && existing.Source == owner
+                    && existing.Index == degree)
+                {
+                    return;
+                }
+            }
+
+            traits.InfAccess.Add(new InfLink
+            {
+                Enter = enter,
+                Index = degree,
+                Source = owner,
+                Block = block,
+                Container = block.OuterLevel,
+                Target = block.SubLevel,
+                TargetX = block.xpos,
+                TargetY = block.ypos,
+            });
+        }
+
+        public string Compact(Func<Level, string> levelLabel)
         {
             var parts = new List<string>();
             if (IsPlayer)
@@ -89,14 +129,9 @@ namespace PPBTool
                 parts.Add(UiText.Get("clone"));
             }
 
-            if (IsInfEnter)
+            foreach (InfLink link in InfAccess)
             {
-                parts.Add(InfLabel(true));
-            }
-
-            if (IsInfExit)
-            {
-                parts.Add(InfLabel(false));
+                parts.Add(InfLabel(link, levelLabel));
             }
 
             if (IsFlip)
@@ -122,17 +157,18 @@ namespace PPBTool
             return string.Join(" · ", parts.ToArray());
         }
 
-        private string InfLabel(bool enter)
+        private static string InfLabel(
+            InfLink link, Func<Level, string> levelLabel)
         {
-            string label = enter ? "Infinite Enter" : "Infinite Exit";
-            if (InfDegree >= 0)
+            string label = link.Enter ? "Infinite Enter" : "Infinite Exit";
+            if (link.Index >= 0)
             {
-                label += " #" + InfDegree;
+                label += " #" + link.Index;
             }
 
-            if (!string.IsNullOrEmpty(InfOwnerTitle))
+            if (link.Source != null && levelLabel != null)
             {
-                label += " of " + InfOwnerTitle;
+                label += " of " + levelLabel(link.Source);
             }
 
             return label;

@@ -157,6 +157,32 @@ namespace PPBTool
         public string Title = string.Empty;
         public string Subtitle = string.Empty;
         public string Tags = string.Empty;
+        public int BoxIndex = -1;
+        public int HiddenIndex = -1;
+        public int VoidIndex = -1;
+
+        public string IndexLabel
+        {
+            get
+            {
+                if (BoxIndex >= 0)
+                {
+                    return "[" + BoxIndex + "]";
+                }
+
+                if (HiddenIndex >= 0)
+                {
+                    return "[b" + HiddenIndex + "]";
+                }
+
+                if (VoidIndex >= 0)
+                {
+                    return "[v" + VoidIndex + "]";
+                }
+
+                return string.Empty;
+            }
+        }
         public int Depth;
         public bool ContainsPlayer;
         public List<LevelNode> Children = new List<LevelNode>();
@@ -194,6 +220,9 @@ namespace PPBTool
             new Dictionary<Level, LevelNode>();
         private readonly Dictionary<Level, List<LevelReference>> referencesByLevel =
             new Dictionary<Level, List<LevelReference>>();
+        private readonly Dictionary<Level, int> boxIndexByLevel = new Dictionary<Level, int>();
+        private readonly Dictionary<Level, int> hiddenIndexByLevel = new Dictionary<Level, int>();
+        private readonly Dictionary<Level, int> voidIndexByLevel = new Dictionary<Level, int>();
 
         public string SceneLabel = string.Empty;
 
@@ -226,6 +255,9 @@ namespace PPBTool
             roots.Clear();
             nodesByLevel.Clear();
             referencesByLevel.Clear();
+            boxIndexByLevel.Clear();
+            hiddenIndexByLevel.Clear();
+            voidIndexByLevel.Clear();
             PlayerNode = null;
             SceneLabel = GetSceneLabel();
 
@@ -242,6 +274,7 @@ namespace PPBTool
                 var childrenByLevel = new Dictionary<Level, List<Level>>();
 
                 BuildReferences(levels);
+                BuildIndexes(levels);
 
                 foreach (Level level in levels)
                 {
@@ -347,6 +380,9 @@ namespace PPBTool
                 ParentBlock = parent,
                 ParentNode = parentNode,
                 Depth = depth,
+                BoxIndex = IndexOf(boxIndexByLevel, level),
+                HiddenIndex = IndexOf(hiddenIndexByLevel, level),
+                VoidIndex = IndexOf(voidIndexByLevel, level),
                 Title = BuildTitle(level, parent, depth, rootIndex, rootCount),
                 Tags = BuildTags(level, parent),
                 References = new List<LevelReference>(GetReferences(level)),
@@ -390,6 +426,83 @@ namespace PPBTool
             }
 
             return node;
+        }
+
+        private void BuildIndexes(List<Level> levels)
+        {
+            var visible = new List<Level>();
+            foreach (Level level in levels)
+            {
+                if (level == null || level.FilledWithWalls || level.InfZone)
+                {
+                    continue;
+                }
+
+                Block exit = level.GetExitBlock();
+                if (exit != null && exit.SpecialEffect == 11)
+                {
+                    continue;
+                }
+
+                if (World.LevelIsInfZone(level)
+                    && !(World.WentToInfZone
+                        && level.blockList != null
+                        && level.blockList.Count > 1))
+                {
+                    continue;
+                }
+
+                if (World.InHub()
+                    && SaveFile.Current != null
+                    && !SaveFile.Current.NexusUnlocked
+                    && !SaveFile.Current.UnlockPuzzles
+                    && !level.hubShowInTUI)
+                {
+                    continue;
+                }
+
+                visible.Add(level);
+            }
+
+            if (!World.InHub())
+            {
+                visible.Sort((a, b) => b.width.CompareTo(a.width));
+            }
+
+            for (int i = 0; i < visible.Count; i++)
+            {
+                boxIndexByLevel[visible[i]] = i + 1;
+            }
+
+            int hidden = 0;
+            foreach (Level level in levels)
+            {
+                if (level == null || level.FilledWithWalls || level.InfZone)
+                {
+                    continue;
+                }
+
+                Block exit = level.GetExitBlock();
+                if (exit != null && exit.SpecialEffect == 11)
+                {
+                    hiddenIndexByLevel[level] = ++hidden;
+                }
+            }
+
+            int voidIndex = 0;
+            foreach (Level level in levels)
+            {
+                if (level != null && level.InfZone)
+                {
+                    voidIndexByLevel[level] = ++voidIndex;
+                }
+            }
+        }
+
+        private static int IndexOf(Dictionary<Level, int> map, Level level)
+        {
+            int value;
+            return level != null && map.TryGetValue(level, out value) ? value : -1;
         }
 
         private void BuildReferences(List<Level> levels)
@@ -646,7 +759,7 @@ namespace PPBTool
                     int degree;
                     if (LevelGraph.TryGetInfOwner(block, out owner, out degree))
                     {
-                        string ownerName = DescribeLevel(owner);
+                        string ownerName = DescribeLevelWithIndex(owner);
                         if (!string.IsNullOrEmpty(ownerName))
                         {
                             infTags.Add(
@@ -671,7 +784,7 @@ namespace PPBTool
                     int degree;
                     if (LevelGraph.TryGetInfOwner(block, out owner, out degree))
                     {
-                        string ownerName = DescribeLevel(owner);
+                        string ownerName = DescribeLevelWithIndex(owner);
                         if (!string.IsNullOrEmpty(ownerName))
                         {
                             infTags.Add(
@@ -899,6 +1012,43 @@ namespace PPBTool
             }
 
             return level.width + "x" + level.height;
+        }
+
+        /// <summary>Index label plus optional area, e.g. [2] (Intro) or [v1].</summary>
+        public string DescribeLevelWithIndex(Level level)
+        {
+            if (level == null)
+            {
+                return "?";
+            }
+
+            string index = string.Empty;
+            int value;
+            if (boxIndexByLevel.TryGetValue(level, out value))
+            {
+                index = "[" + value + "]";
+            }
+            else if (hiddenIndexByLevel.TryGetValue(level, out value))
+            {
+                index = "[b" + value + "]";
+            }
+            else if (voidIndexByLevel.TryGetValue(level, out value))
+            {
+                index = "[v" + value + "]";
+            }
+
+            string area = string.IsNullOrEmpty(level.hubAreaName)
+                ? string.Empty
+                : level.hubAreaName.Replace('_', ' ');
+
+            if (!string.IsNullOrEmpty(index))
+            {
+                return string.IsNullOrEmpty(area) ? index : index + " (" + area + ")";
+            }
+
+            return string.IsNullOrEmpty(area)
+                ? DescribeLevel(level)
+                : area;
         }
 
         /// <summary>

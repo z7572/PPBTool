@@ -1579,10 +1579,13 @@ namespace PPBTool
             foreach (LevelNode rowNode in rows)
             {
                 float titleW = labelStyle.CalcSize(new GUIContent(rowNode.Title)).x;
+                float indexW = string.IsNullOrEmpty(rowNode.IndexLabel)
+                    ? 0f
+                    : smallStyle.CalcSize(new GUIContent(rowNode.IndexLabel + " ")).x;
                 float tagsW = string.IsNullOrEmpty(rowNode.Tags)
                     ? 0f
                     : smallStyle.CalcSize(new GUIContent("[" + rowNode.Tags + "]")).x + 8f;
-                float need = 24f + rowNode.Depth * 13f + titleW + tagsW + 90f;
+                float need = 24f + rowNode.Depth * 13f + indexW + titleW + tagsW + 90f;
                 if (need > contentW)
                 {
                     contentW = need;
@@ -1651,6 +1654,15 @@ namespace PPBTool
 
                 float textX = 24f + node.Depth * 13f - treeScrollX;
                 Color oldColor = GUI.color;
+                if (!string.IsNullOrEmpty(node.IndexLabel))
+                {
+                    float indexW = smallStyle.CalcSize(new GUIContent(node.IndexLabel + " ")).x;
+                    GUI.color = new Color(0.62f, 0.66f, 0.72f, 1f);
+                    GUI.Label(new Rect(textX, y, indexW, RowH - 1f), node.IndexLabel + " ", smallStyle);
+                    textX += indexW;
+                }
+
+                GUI.color = oldColor;
                 if (node.ContainsPlayer)
                 {
                     GUI.color = PlayerCol;
@@ -3568,7 +3580,7 @@ namespace PPBTool
             if (block != null && config.ShowBlockTraits)
             {
                 BlockTraits traits = BlockTraits.From(block);
-                string traitText = traits.Compact();
+                string traitText = traits.Compact(graph.DescribeLevelWithIndex);
                 if (!string.IsNullOrEmpty(traitText))
                 {
                     info += " · " + traitText;
@@ -3606,8 +3618,7 @@ namespace PPBTool
                 + " sub=" + (block.SubLevel == null ? "null" : LevelGraph.DescribeLevel(block.SubLevel))
                 + " counting=" + traits.Solved + "/" + traits.Required
                 + " se=" + traits.SpecialEffect + "(" + SpecialEffectCatalog.Name(traits.SpecialEffect) + ")"
-                + " infDegree=" + traits.InfDegree
-                + " infOwner=" + (traits.InfOwnerTitle ?? "null")
+                + " infLinks=" + traits.InfAccess.Count
                 + " outer=" + (block.OuterLevel == null ? "null" : block.OuterLevel.hubAreaName)
                 + " outerStart=" + (block.OuterLevelStart == null ? "null" : block.OuterLevelStart.hubAreaName));
         }
