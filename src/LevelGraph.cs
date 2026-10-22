@@ -637,32 +637,39 @@ namespace PPBTool
                 {
                     if (block == null
                         || !block.IsSomeInfExitBlock
-                        || block.OuterLevel != level
-                        || block.SubLevel == null
-                        || block.SubLevel.infExitBlocks == null)
+                        || block.OuterLevel != level)
                     {
                         continue;
                     }
 
-                    int degree = block.SubLevel.infExitBlocks.IndexOf(block);
-                    string owner = DescribeLevel(block.SubLevel);
-                    if (degree >= 0 && !string.IsNullOrEmpty(owner))
+                    Level owner;
+                    int degree;
+                    if (LevelGraph.TryGetInfOwner(block, out owner, out degree))
                     {
-                        infTags.Add("Infinite Exit #" + degree + " of " + owner);
+                        string ownerName = DescribeLevel(owner);
+                        if (!string.IsNullOrEmpty(ownerName))
+                        {
+                            infTags.Add(
+                                "Infinite Exit #" + degree + " of " + ownerName);
+                        }
                     }
                 }
             }
 
             if (parent != null
                 && parent.IsSomeInfEnterBlock
-                && parent.SubLevel == level
-                && parent.OuterLevel != null)
+                && parent.SubLevel == level)
             {
-                string owner = DescribeLevel(parent.OuterLevel);
-                if (!string.IsNullOrEmpty(owner))
+                Level owner;
+                int degree;
+                if (LevelGraph.TryGetInfOwner(parent, out owner, out degree))
                 {
-                    infTags.Add(
-                        "Infinite Enter #" + parent.SomeInfEnterNum + " of " + owner);
+                    string ownerName = DescribeLevel(owner);
+                    if (!string.IsNullOrEmpty(ownerName))
+                    {
+                        infTags.Add(
+                            "Infinite Enter #" + degree + " of " + ownerName);
+                    }
                 }
             }
 
@@ -884,6 +891,53 @@ namespace PPBTool
             }
 
             return level.width + "x" + level.height;
+        }
+
+        /// <summary>
+        /// Recover the level that owns an infinity link and its index. This is the
+        /// runtime equivalent of the level's infEnterBlocks/infExitBlocks list,
+        /// not the block's OuterLevel/SubLevel guess.
+        /// </summary>
+        public static bool TryGetInfOwner(Block block, out Level owner, out int degree)
+        {
+            owner = null;
+            degree = -1;
+            if (block == null || World.levels == null)
+            {
+                return false;
+            }
+
+            foreach (Level level in World.levels)
+            {
+                if (level == null)
+                {
+                    continue;
+                }
+
+                if (block.IsSomeInfEnterBlock && level.infEnterBlocks != null)
+                {
+                    int index = level.infEnterBlocks.IndexOf(block);
+                    if (index >= 0)
+                    {
+                        owner = level;
+                        degree = index;
+                        return true;
+                    }
+                }
+
+                if (block.IsSomeInfExitBlock && level.infExitBlocks != null)
+                {
+                    int index = level.infExitBlocks.IndexOf(block);
+                    if (index >= 0)
+                    {
+                        owner = level;
+                        degree = index;
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         /// <summary>True when the player can legally stand on this cell (empty, no portal).</summary>

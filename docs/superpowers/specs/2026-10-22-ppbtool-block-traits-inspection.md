@@ -312,23 +312,16 @@ Ref 1 1 1 0 0 0 ... Intro           // 普通引用，同格重叠
 - `SubLevel = Intro`；
 - `OuterLevel = Multi Infinite`。
 
-因此“谁的无限退出”应取 **`block.SubLevel`（Intro）**，不是 `block.OuterLevel`（Multi Infinite）。
+因此“谁的无限退出”不能只靠 `block.SubLevel` / `block.OuterLevel` 猜。正确做法是使用游戏加载后的 owner 列表：
 
-但树标签应挂在**目的地节点 / 外层节点** `Multi Infinite` 上，因为用户想直观看到：
+- 无限退出：扫描 `World.levels`，找 `level.infExitBlocks.IndexOf(block) >= 0`；
+  - owner = 该 `level`；
+  - degree = 该索引。
+- 无限进入：扫描 `World.levels`，找 `level.infEnterBlocks.IndexOf(block) >= 0`；
+  - owner = 该 `level`（即 editor 的 `from id` 对应层）；
+  - degree = 该索引。
 
-> 这个 Multi Infinite 方块，是通过 Intro 的无限退出 #1 进入的。
-
-最终显示：
-
-```text
-Multi Infinite  [无限退出 #1 of Intro]
-```
-
-详情悬浮同一个出口块时：
-
-```text
-无限退出 #1 of Intro
-```
+这直接复用游戏 `LoadLevel` 的 `infEnterBlocks` / `infExitBlocks` 结构，不再把 `OuterLevel` / `SubLevel` 当 owner。`???` 只是某个真实层的名字，不能用作 fallback。
 
 ### 树标签
 
@@ -350,12 +343,14 @@ Multi Infinite  [refs ×2 · Infinite Exit #1 of Intro]
 
 规则：
 
-- 标签 `Infinite Exit #n of owner`；
-  - 出口块可能不在 `LevelNode.References` 里（`References` 是“谁引用本层”），必须从 `World.blocks` / 本层出口块集合中扫 `OuterLevel == level`。
+- **Infinite Exit**：
+  - 节点 = `block.OuterLevel`（出口块所在的目的地层）；
+  - owner/degree = 扫描 `level.infExitBlocks` 找到的 owner 与索引；
+  - 标签 `Infinite Exit #n of owner`；
+  - 出口块可能不在 `LevelNode.References` 里（`References` 是“谁引用本层”），必须从 `World.blocks` 中扫描 `OuterLevel == level`。
 - **Infinite Enter**：
   - 节点 = `block.SubLevel`（进入的目标层）；
-  - owner = `block.OuterLevel`（进入块所在的来源层）；
-  - degree = `block.SomeInfEnterNum`；
+  - owner/degree = 扫描 `level.infEnterBlocks` 找到的 owner 与索引（对应 `from id`）；
   - 标签 `Infinite Enter #n of owner`；
   - 只使用当前节点的 `ParentBlock`，不要再遍历所有入向引用，避免同一层出现多个 `#1`。
 - 同层多个引用用 ` · ` 分隔；

@@ -465,16 +465,17 @@ These fixes come from the [inspection log](../../specs/2026-10-22-ppbtool-block-
 **Files:** Modify `src/BlockTraits.cs`, `src/UiText.cs`
 
 - [ ] Add `InfOwnerTitle` and `InfDegree`.
-  - 无限退出：owner = `block.SubLevel`；degree = `block.SubLevel.infExitBlocks.IndexOf(block)`；
-  - 无限进入：owner = `block.OuterLevel`；degree = `block.SomeInfEnterNum`。
+  - owner/degree = scan `World.levels` for the level whose `infExitBlocks`/`infEnterBlocks` contains the block;
+  - this is the runtime equivalent of the editor's layer/from-id data;
+  - do not use `block.OuterLevel` or `block.SubLevel` as the owner.
 - [ ] Format:
   ```text
   Infinite Exit #1 of Intro
   Infinite Enter #0 of Multi Infinite
   ```
   Use game 0-based indexes and English text in both UI languages.
-- [ ] Fall back to plain `Infinite Exit` / `Infinite Enter` when the title or index is unavailable.
-- [ ] Verify with a level that has multiple `infenter`/`infexit` indexes.
+- [ ] Fall back to plain `Infinite Exit` / `Infinite Enter` when the owner/title or index is unavailable.
+- [ ] Verify Epsilon and the Intro/Multi Infinite case, plus a `???` area; `???` must only appear when it is genuinely the owner.
 - [ ] Build and commit.
 
 ### 8.6 SE8 glyph size
@@ -498,13 +499,11 @@ These fixes come from the [inspection log](../../specs/2026-10-22-ppbtool-block-
   ```
 - [ ] 无限退出：
   - node = `block.OuterLevel`（出口块所在的目的地层，即 Multi Infinite）；
-  - owner = `block.SubLevel`（来源层，即 Intro）；
-  - degree = `block.SubLevel.infExitBlocks.IndexOf(block)`；
+  - owner/degree = 扫描 `level.infExitBlocks` 找到的 owner 与索引；
   - scan exit blocks with `OuterLevel == level` because they are not in `LevelNode.References`.
 - [ ] 无限进入：
   - node = `block.SubLevel`（目标层）；
-  - owner = `block.OuterLevel`（来源层）；
-  - degree = `block.SomeInfEnterNum`；
+  - owner/degree = 扫描 `level.infEnterBlocks` 找到的 owner 与索引（对应 `from id`）；
   - **only use the current node's `ParentBlock`**, do not enumerate every incoming enter ref.
 - [ ] Use game 0-based indexes and English text in both UI languages.
 - [ ] Remove the aggregate `Infinite Enter ×N` / `Infinite Exit ×N` tags; keep `refs ×N` / hidden tags / `void`.

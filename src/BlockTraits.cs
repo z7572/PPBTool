@@ -51,20 +51,12 @@ namespace PPBTool
 
             if (block != null && (block.IsSomeInfEnterBlock || block.IsSomeInfExitBlock))
             {
-                if (block.IsSomeInfEnterBlock)
+                Level owner;
+                int degree;
+                if (LevelGraph.TryGetInfOwner(block, out owner, out degree))
                 {
-                    traits.InfDegree = block.SomeInfEnterNum;
-                    traits.InfOwnerTitle = block.OuterLevel != null
-                        ? LevelGraph.DescribeLevel(block.OuterLevel)
-                        : null;
-                }
-                else if (block.SubLevel != null)
-                {
-                    traits.InfOwnerTitle = LevelGraph.DescribeLevel(block.SubLevel);
-                    if (block.SubLevel.infExitBlocks != null)
-                    {
-                        traits.InfDegree = block.SubLevel.infExitBlocks.IndexOf(block);
-                    }
+                    traits.InfOwnerTitle = LevelGraph.DescribeLevel(owner);
+                    traits.InfDegree = degree;
                 }
             }
 
