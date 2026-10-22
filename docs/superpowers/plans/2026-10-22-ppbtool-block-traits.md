@@ -507,7 +507,8 @@ These fixes come from the [inspection log](../../specs/2026-10-22-ppbtool-block-
   - degree = `block.SomeInfEnterNum`.
 - [ ] Use game 0-based indexes.
 - [ ] Keep existing `refs ×N` / hidden tags; do not remove them.
-- [ ] Verify `Intro`'s second infinite exit shown on the `Multi Infinite` node as `无限退出 #1 of Intro`, not `Multi Infinite`.
+- [ ] Tree label text/order is flexible: keep existing `refs ×N` / `hidden ×N` / `void` tags and append the infinity owner/degree; the tree already scrolls horizontally.
+- [ ] Verify `Intro`'s second infinite exit is visible on the `Multi Infinite` node and includes `无限退出 #1 of Intro`; do not replace existing tags.
 - [ ] Build and commit.
 
 ### Task 7: Documentation and final acceptance

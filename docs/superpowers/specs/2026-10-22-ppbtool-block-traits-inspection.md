@@ -335,8 +335,16 @@ Multi Infinite  [无限退出 #1 of Intro]
 左侧层级节点要区分“入口引用”和“出口引用”：
 
 ```text
-Multi Infinite  [无限退出 #1 of Intro]
+Multi Infinite  [refs ×2 · 无限退出 #1 of Intro]
 ```
+
+树标签**不要求固定文案或固定顺序**；只要求：
+
+- 保留现有的 `refs ×N`、`hidden ×N`、`void` 等标签；
+- 追加无限引用的 owner/degree；
+- 多个标签用 ` · ` 分隔；
+- 树已有水平滚动，放不下时可滚动查看；
+- 详情行的格式仍固定为 `无限退出 #1 of Intro`。
 
 规则：
 
