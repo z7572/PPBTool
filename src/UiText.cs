@@ -67,6 +67,7 @@ namespace PPBTool
                 { "player", new[] { "玩家", "player" } },
                 { "player_order", new[] { "玩家序号", "player order" } },
                 { "possessable", new[] { "可占据", "possessable" } },
+                { "flip", new[] { "翻转", "flip" } },
                 { "primary_exit", new[] { "主出口", "primary exit" } },
                 { "clone", new[] { "克隆", "clone" } },
                 { "counting", new[] { "计数", "counting" } },

@@ -13,6 +13,7 @@ namespace PPBTool
         public bool IsInfExit;
         public bool IsPlayer;
         public bool IsPossessable;
+        public bool IsFlip;
         public bool IsCounting;
         public int PlayerOrder;
         public int SpecialEffect;
@@ -29,6 +30,7 @@ namespace PPBTool
                 IsInfExit = block != null && block.IsSomeInfExitBlock,
                 IsPlayer = block != null && block.IsPlayer,
                 IsPossessable = block != null && block.Possessable,
+                IsFlip = block != null && block.FlipH,
                 IsCounting = block != null && block.numRequired > 0,
                 PlayerOrder = block != null ? block.PlayerOrder : 0,
                 SpecialEffect = block != null ? block.SpecialEffect : 0,
@@ -81,6 +83,11 @@ namespace PPBTool
             if (IsInfExit)
             {
                 parts.Add(UiText.Get("inf_exit"));
+            }
+
+            if (IsFlip)
+            {
+                parts.Add(UiText.Get("flip"));
             }
 
             if (IsCounting)
