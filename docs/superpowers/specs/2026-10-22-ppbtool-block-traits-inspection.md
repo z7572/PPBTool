@@ -269,3 +269,80 @@ else if (block.PlayerOrder == 2)
 - 无限进入/退出显示游戏索引 `#0`；
 - floatinspace 不显示；
 - Locked / Weight / Shield / Rooted 不显示。
+
+## 12. SE8 尺寸修正
+
+用户反馈当前图标比游戏实际显示略大。
+
+游戏 `DrawGlyphs`：
+
+```csharp
+double num3 = num * 0.75;   // 宽
+double num4 = num2 * 0.75;  // 高
+```
+
+所以正确规则是：
+
+- 位于内部第一格中心；
+- 大小 = `内部格子 * 0.75`，不是整个格子；
+- 多个图标之间间隔一个完整内部格子高度；
+- 点进箱子后显示在内部层第一格时也用 `cell * 0.75`。
+
+## 13. 无限进入/退出的所属层
+
+用户例子：
+
+```text
+Intro 的二重无限退出 → Multi Infinite @ (1,1)
+```
+
+`hub.txt` 中相关行：
+
+```text
+Block 0 0 29 ...                    // Multi Infinite 层
+Ref 1 1 1 0 1 1 ... Intro           // Intro 的无限退出，位于 Multi Infinite (1,1)
+Ref 1 1 1 0 0 0 ... Intro           // 普通引用，同格重叠
+```
+
+这条 `Ref`：
+
+- `id=1` → Intro 层；
+- `infexit=1`；
+- `infexitnum=1`；
+- `SubLevel = Intro`；
+- `OuterLevel = Multi Infinite`。
+
+因此“谁的无限退出”应取 **`block.SubLevel`（Intro）**，不是 `block.OuterLevel`（Multi Infinite）。
+
+当前 UI 只显示 `Multi Infinite`，说明现有标签用的是**父层/当前节点**，不是引用所属层；需要在引用和树标签中显式记录：
+
+```text
+无限退出 #1 · Intro
+```
+
+### 树标签
+
+左侧层级节点也应显示它作为哪个层的无限引用的信息：
+
+```text
+Intro [refs ×2 · 无限退出 #1 · Intro]
+```
+
+规则：
+
+- 遍历 `LevelNode.References`；
+- 对每个 `IsSomeInfEnterBlock`：
+  - owner = `Block.SubLevel` 的标题；
+  - degree = `SomeInfEnterNum`；
+  - 标签 `无限进入 #n · owner`；
+- 对每个 `IsSomeInfExitBlock`：
+  - owner = `Block.SubLevel` 的标题；
+  - degree = `SubLevel.infExitBlocks.IndexOf(Block)`；
+  - 标签 `无限退出 #n · owner`；
+- 同层多个引用用 ` · ` 分隔；
+- 使用游戏 0-based 索引；
+- 不显示 `∞` 字符，使用“无限”。
+
+### 详情
+
+`BlockTraits` 使用同样的 owner/degree 规则；若当前光标落在**同格重叠的普通引用**上，应提示该格还有隐藏引用，而不是伪造无限标签。引用选择器里也应显示 owner/degree。

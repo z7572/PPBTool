@@ -335,7 +335,7 @@ if (World.innerPushEnabled) DrawGlyph(texInnerPush, index++);
 Glyph layout inside a box:
 - `cw = r.width / sub.width`, `ch = r.height / sub.height`;
 - first inner cell center: `(r.x + cw/2, r.y + ch/2)`;
-- size = `Mathf.Min(cw, ch)`;
+- size = `Mathf.Min(cw, ch) * 0.75f`;
 - subsequent icons shift `index * ch` down;
 - color = `new Color(0f, 0f, 0f, 0.35f)`.
 
@@ -476,6 +476,34 @@ These fixes come from the [inspection log](../../specs/2026-10-22-ppbtool-block-
   Use game 0-based indexes.
 - [ ] Fall back to plain `Infinite Enter` / `Infinite Exit` when the title or index is unavailable.
 - [ ] Verify with a level that has multiple `infenter`/`infexit` indexes.
+- [ ] Build and commit.
+
+### 8.6 SE8 glyph size
+
+**Files:** Modify `src/TeleportOverlay.cs` (`DrawTraitGlyph` / `DrawLevelBoxGlyphs`)
+
+- [ ] The game draws glyphs at `0.75 * inner cell`, not at full cell size.
+- [ ] Change both parent-box and opened-interior glyphs to `size = cell * 0.75f`.
+- [ ] Keep the first glyph centered in the first inner cell; subsequent glyphs step by one full inner cell.
+- [ ] Verify Ext0/Push_2 glyph size matches the game, including after opening the box.
+- [ ] Build and commit.
+
+### 8.7 Tree ∞ owner/degree labels
+
+**Files:** Modify `src/LevelGraph.cs` (`BuildTags`), `src/BlockTraits.cs` (shared owner/degree helper), `src/UiText.cs`
+
+- [ ] For every `LevelNode.References` entry whose block is `IsSomeInfEnterBlock` or `IsSomeInfExitBlock`, add a compact tag:
+  ```text
+  无限退出 #1 · Intro
+  无限进入 #0 · Multi Infinite
+  ```
+- [ ] Owner is `Block.SubLevel`, not the current node level and not `OuterLevel`.
+- [ ] Degree:
+  - enter = `Block.SomeInfEnterNum`;
+  - exit = `Block.SubLevel.infExitBlocks.IndexOf(Block)`.
+- [ ] Use game 0-based indexes.
+- [ ] Keep existing `refs ×N` / hidden tags; do not remove them.
+- [ ] Verify `Intro`'s second infinite exit shown on the `Multi Infinite` side as `无限退出 #1 · Intro`, not `Multi Infinite`.
 - [ ] Build and commit.
 
 ### Task 7: Documentation and final acceptance
