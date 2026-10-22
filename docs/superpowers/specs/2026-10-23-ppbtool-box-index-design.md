@@ -212,22 +212,18 @@ Infinite Exit #1 of Intro
 所以对任意有 `SubLevel` 的箱子：
 
 1. 扫描 `block.IsSomeInfEnterBlock && block.SubLevel == 当前.SubLevel`；
-2. 用 `level.infEnterBlocks` 反查 owner/degree；
-3. 按 owner+degree 去重；
-4. 显示：
+2. 再扫描 `当前.SubLevel.infExitBlocks`；
+3. 用 `level.infEnterBlocks` / `infExitBlocks` 反查 owner/degree；
+4. 按 owner+degree 去重；
+5. 显示：
    ```text
    Infinite Enter #0 of [2] (Intro)
+   Infinite Exit #1 of [2] (Transfer)
    ```
 
 这适用于主箱子、clone、∞ 进入箱和 ∞ 退出箱。
 
-只有方块自身是 ∞ 退出块时，才追加它自己的：
-
-```text
-Infinite Exit #1 of Intro
-```
-
-不能把父层的 ∞ 退出硬套到同层所有箱子上。
+不能只看方块自身是不是 ∞ 退出块：普通箱子所属 Level 也可能有 ∞ 退出引用，例如 Reception 2 `(9,2)` 的 Transfer、`(9,3)` 的 Flip+、`(9,6)` 的 Redo。
 
 ## 7. 与现有 infinity owner 的关系
 

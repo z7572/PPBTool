@@ -139,9 +139,11 @@ other.IsSomeInfEnterBlock && other.SubLevel == block.SubLevel
 
 Resolve each with `TryGetInfOwner`, then deduplicate by `(Owner, Degree)`.
 
-- [ ] **Step 2: Add the block's own exit link**
+- [ ] **Step 2: Add the level's own exit links**
 
-If `block.IsSomeInfExitBlock`, add its own link (`Enter = false`). Do not copy the parent level's exits onto every box.
+If `block.SubLevel.infExitBlocks` is non-empty, add every non-null exit link. This is required for normal/clone boxes whose Level has an infinity exit, such as Reception 2 `(9,2)` Transfer, `(9,3)` Flip+, `(9,6)` Redo.
+
+If `block.IsSomeInfExitBlock`, also add its own link; deduplicate by `(Owner, Degree)`.
 
 - [ ] **Step 3: Keep an unresolved-owner fallback**
 

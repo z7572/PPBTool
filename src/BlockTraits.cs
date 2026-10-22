@@ -59,6 +59,17 @@ namespace PPBTool
                         AddInfLink(traits, other, true);
                     }
                 }
+
+                if (block.SubLevel.infExitBlocks != null)
+                {
+                    foreach (Block exit in block.SubLevel.infExitBlocks)
+                    {
+                        if (exit != null)
+                        {
+                            AddInfLink(traits, exit, false);
+                        }
+                    }
+                }
             }
 
             if (block != null && block.IsSomeInfExitBlock)
