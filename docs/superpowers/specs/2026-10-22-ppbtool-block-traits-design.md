@@ -6,6 +6,7 @@
 参考：
 - [Patrick's Parabox 官方自定义关卡文档](https://www.patricksparabox.com/custom-levels/)
 - [Parabox-Editor](https://github.com/sudo-jade/Parabox-Editor/)
+- [观察记录](2026-10-22-ppbtool-block-traits-inspection.md)
 
 ## 1. 目标
 
@@ -334,3 +335,7 @@ internal static class SpecialEffectCatalog
 1. 地图必须显示 SE8 的 Order / Shed / InnerPush 图标。
 2. floatinspace 不显示，不做启发式猜测。
 3. 实施方式为 Native（当前会话直接实现）。
+4. 玩家墙 `hue/sat/val` 为零时使用关卡墙色；普通彩色玩家使用玩家色。
+5. 无限进入/退出重数使用游戏索引（0-based）。
+6. SE8 图标位于箱子内部第一格中心，大小等于内部格子；点进箱子后在内部层左上角第一格继续显示。
+7. 多个 SE8 图标按游戏逻辑向下各占一格。

@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-22-ppbtool-block-traits-design.md`
 
+**Inspection:** `docs/superpowers/specs/2026-10-22-ppbtool-block-traits-inspection.md`
+
 ## Global Constraints
 
 - This is a display-only feature; do not modify `World`, `Block`, levels, or save data.
@@ -297,14 +299,15 @@ git commit -m "Show level-wide priority and push mechanics"
 ### Task 5: Draw game-faithful SpecialEffect 8 glyphs
 
 **Files:**
-- Modify: `src/TeleportOverlay.cs` (texture fields, `EnsureGameArtTextures`, `DrawBoxArt`, new `DrawBoxGlyphs`)
+- Modify: `src/TeleportOverlay.cs` (texture fields, `EnsureGameArtTextures`, `DrawBoxArt`, `DrawMap`, new `DrawBoxGlyphs`)
 - Test: `tests/custom_levels/block_traits_se8.txt`
 
 **Interfaces:**
-- Consumes: `Block.SpecialEffect`, `World.showAttemptOrder`, `World.shedEnabled`, `World.innerPushEnabled`
+- Consumes: `Block.SpecialEffect`, `World.showAttemptOrder`, `World.shedEnabled`, `World.innerPushEnabled`, `selectedNode.ParentBlock`
 - Produces:
   ```csharp
-  private void DrawBoxGlyphs(Rect r, Block block, int cell);
+  private void DrawBoxGlyphs(Rect r, Block block, int cell, Level sub);
+  private void DrawLevelBoxGlyphs(Level level, float originX, float originY, int cell);
   ```
 
 - [ ] **Step 1: Load the three game textures**
@@ -320,7 +323,7 @@ Add null-safe fields. If a texture is missing, skip that glyph; do not draw text
 - [ ] **Step 2: Implement the game rule**
 
 ```csharp
-if (!config.ShowTraitIcons || block == null || block.SpecialEffect != 8 || block.SubLevel == null)
+if (!config.ShowTraitIcons || block == null || block.SpecialEffect != 8)
     return;
 
 int index = 0;
@@ -329,30 +332,41 @@ if (World.shedEnabled) DrawGlyph(texShed, index++);
 if (World.innerPushEnabled) DrawGlyph(texInnerPush, index++);
 ```
 
-Glyph layout:
-- size = `cell * 0.75`;
-- x = box left + `cell * 0.05`;
-- y = box top + `cell * 0.05 + index * cell`;
+Glyph layout inside a box:
+- `cw = r.width / sub.width`, `ch = r.height / sub.height`;
+- first inner cell center: `(r.x + cw/2, r.y + ch/2)`;
+- size = `Mathf.Min(cw, ch)`;
+- subsequent icons shift `index * ch` down;
 - color = `new Color(0f, 0f, 0f, 0.35f)`.
 
-Call `DrawBoxGlyphs(r, block, cell)` immediately before `DrawBoxBorder`/`DrawInfSymbols` so icons sit on the box contents. Only SE8 boxes.
+Call `DrawBoxGlyphs(r, block, cell, sub)` immediately before `DrawBoxBorder`/`DrawInfSymbols`.
 
-- [ ] **Step 3: Verify**
+- [ ] **Step 3: Keep the marker visible inside the opened box**
+
+In `DrawMap`, after drawing the level cells, if `selectedNode.ParentBlock` has `SpecialEffect == 8`, call:
+```csharp
+DrawLevelBoxGlyphs(level, localX, localY, cell);
+```
+Draw at the **current level's top-left first cell**, using the same order/size rule. The marker belongs to the parent reference, not to the interior blocks.
+
+- [ ] **Step 4: Verify**
 
 Load the fixture:
-- SE8 + all three headers: three icons in Order/Shed/InnerPush order;
+- parent level: SE8 box icons centered in its first interior cell;
+- click into the box: the same icons remain at the interior top-left cell;
+- three mechanics: icons stack downward, each one inner cell tall;
 - SE8 + only shed: one Shed icon;
 - non-SE8 box: no glyph;
-- default level: no bar and no glyph.
-- Ext0 (`shed` + SE8): one Shed glyph.
+- default level: no bar and no glyph;
+- Ext0 (`shed` + SE8): one Shed glyph;
 - Push_2 (`inner_push` + SE8): one InnerPush glyph.
 
-- [ ] **Step 4: Build and commit**
+- [ ] **Step 5: Build and commit**
 
 ```bash
 dotnet build -c Release
 git add src/TeleportOverlay.cs
-git commit -m "Draw SpecialEffect 8 mechanic glyphs"
+git commit -m "Draw SpecialEffect 8 mechanic glyphs inside boxes"
 ```
 
 ---
@@ -391,6 +405,78 @@ git commit -m "Document that floatinspace is not recoverable at runtime"
 ```
 
 ---
+
+## Follow-up Fixes (from runtime inspection)
+
+These fixes come from the [inspection log](../../specs/2026-10-22-ppbtool-block-traits-inspection.md). Do them after reproducing with `LogBlockTraits`.
+
+### 8.1 Player-wall color
+
+**Files:** Modify `src/BlockTraits.cs` (diagnostic fields), `src/TeleportOverlay.cs` (`DrawWallArt`)
+
+- [ ] Add `hue/sat/val`, `startHue/startSat/startVal`, and `WallTileIndex` to the `BlockTraits` log.
+- [ ] In `DrawWallArt`, use player color only when `block.IsPlayer && !possessedWall && (block.val > 0.0001f || block.sat > 0.0001f)`.
+- [ ] Otherwise use `GameWallColor(colorSource, cell)` so Ext3 `(1,1)` and S0 `(2,4)` use the level wall color.
+- [ ] Verify: Ext3 `(1,1)`, S0 `(2,4)` match surrounding walls; a normal colored player still uses its own color.
+- [ ] Build and commit.
+
+### 8.2 Flashing exit border on wall path
+
+**Files:** Modify `src/TeleportOverlay.cs` (shared `IsFlashingExitBlock`, `DrawWallArt`)
+
+- [ ] Extract the `DrawBlockBorder` condition:
+  ```csharp
+  bool flashing = block.IsSomeInfExitBlock
+      || (block.OuterLevel != null
+          && block.OuterLevel.InfZone
+          && block.SubLevel != null
+          && !block.SubLevel.FilledWithWalls
+          && block.SpecialEffect != 12);
+  ```
+- [ ] Draw the same oscillating hue `0.15` border in `DrawWallArt` when the block has no `SubLevel`.
+- [ ] Verify Ext5 `(5,5)` and C1 `(1,3)` both flash; an ordinary wall does not.
+- [ ] Build and commit.
+
+### 8.3 Phantom player face
+
+**Files:** Modify `src/TeleportOverlay.cs` (`DrawBoxArt`)
+
+- [ ] Change the phantom face condition from “player is inside `sub`” to also require `block == GameState.Player` (or `block.IsPlayer`).
+- [ ] Verify Ext5 `(5,1)` no longer draws eyes; a real player box still draws its face.
+- [ ] Build and commit.
+
+### 8.4 PlayerOrder 2 mouth
+
+**Files:** Modify `src/TeleportOverlay.cs` (`DrawFaceArt`)
+
+- [ ] For `PlayerOrder == 2`, draw a white bar:
+  ```text
+  width  = r.width * 0.2666
+  height = r.height * 0.05
+  x      = 1.5 * eyeXOffset
+  y      = 0.17 + 1.5 * eyeYOffset
+  ```
+- [ ] Flip `x` when `block.FlipH`.
+- [ ] Verify S0 `(2,4)` (player order 1) and a multi-player level's order 2 show the bar.
+- [ ] Build and commit.
+
+### 8.5 Infinite Enter/Exit owner and degree
+
+**Files:** Modify `src/BlockTraits.cs`, `src/UiText.cs`
+
+- [ ] Add `InfOwnerTitle` and `InfDegree`.
+  - `InfOwnerTitle = LevelGraph.DescribeLevel(block.SubLevel)` for both enter and exit;
+  - enter degree = `block.SomeInfEnterNum`;
+  - exit degree = `block.SubLevel.infExitBlocks.IndexOf(block)`.
+- [ ] Format:
+  ```text
+  Infinite Enter #0 · Area Transfer
+  Infinite Exit #2 · Void 7x7
+  ```
+  Use game 0-based indexes.
+- [ ] Fall back to plain `Infinite Enter` / `Infinite Exit` when the title or index is unavailable.
+- [ ] Verify with a level that has multiple `infenter`/`infexit` indexes.
+- [ ] Build and commit.
 
 ### Task 7: Documentation and final acceptance
 
